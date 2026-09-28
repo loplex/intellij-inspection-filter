@@ -77,6 +77,51 @@ class SeverityFilteredProfileTest : BasePlatformTestCase() {
                      loadSelectedSeverityNames(project))
     }
 
+    fun testBefore261TheGrazieRunnerIsSwitchedOffWithNoneOfItsChildren() {
+        val source = profileOf(GrazieInspectionRunner(), GrazieInspection(), GrazieStyle())
+
+        val filtered = SeverityFilteredProfile(source, setOf(HighlightSeverity.WARNING.name), project, BUGGY_BUILD)
+
+        assertEquals(emptyList<String>(), enabledToolNames(filtered))
+    }
+
+    fun testBefore261TheGrazieRunnerRunsForAChildWhateverItsOwnSeverity() {
+        val source = profileOf(GrazieInspectionRunner(), GrazieInspection(), GrazieStyle())
+
+        val filtered = SeverityFilteredProfile(source, setOf(severityOf(source, "GrazieInspection")), project, BUGGY_BUILD)
+
+        assertEquals(listOf("GrazieInspection", "GrazieInspectionRunner"), enabledToolNames(filtered))
+    }
+
+    fun testBefore261AGrazieRunnerSwitchedOffInTheSourceStaysOff() {
+        val source = profileOf(GrazieInspectionRunner(), GrazieInspection(), GrazieStyle())
+        source.getToolsOrNull(GRAZIE_RUNNER, project)!!.isEnabled = false
+
+        val filtered = SeverityFilteredProfile(source, setOf(severityOf(source, "GrazieInspection")), project, BUGGY_BUILD)
+
+        assertEquals(listOf("GrazieInspection"), enabledToolNames(filtered))
+    }
+
+    fun testFrom261TheGrazieRunnerIsFilteredBySeverityLikeAnyOther() {
+        val source = profileOf(GrazieInspectionRunner(), GrazieInspection(), GrazieStyle())
+
+        assertEquals(listOf("GrazieInspection"),
+                     enabledToolNames(SeverityFilteredProfile(source, setOf(severityOf(source, "GrazieInspection")), project,
+                                                              FIXED_BUILD)))
+        assertEquals(listOf("GrazieInspectionRunner"),
+                     enabledToolNames(SeverityFilteredProfile(source, setOf(HighlightSeverity.WARNING.name), project, FIXED_BUILD)))
+    }
+
+    fun testWithoutGrazieTheWorkaroundDoesNothing() {
+        val source = profileOf(AnError(), AWarning())
+
+        assertEquals(listOf("AnError"),
+                     enabledToolNames(SeverityFilteredProfile(source, setOf(HighlightSeverity.ERROR.name), project, BUGGY_BUILD)))
+    }
+
+    private fun severityOf(profile: InspectionProfileImpl, shortName: String): String =
+        profile.getToolsOrNull(shortName, project)!!.level.severity.name
+
     private fun profileOf(vararg inspections: LocalInspectionTool): InspectionProfileImpl {
         val supplier = object : InspectionToolsSupplier() {
             override fun createTools(): List<InspectionToolWrapper<*, *>> = inspections.map { LocalInspectionToolWrapper(it) }
@@ -102,4 +147,16 @@ class SeverityFilteredProfileTest : BasePlatformTestCase() {
     private class AnError : TestInspection(HighlightDisplayLevel.ERROR)
     private class AWarning : TestInspection(HighlightDisplayLevel.WARNING)
     private class AWeakWarning : TestInspection(HighlightDisplayLevel.WEAK_WARNING)
+
+    // Named as Grazie names them. A wrapper takes the level registered under its inspection's name, so where Grazie is
+    // loaded, as it is in the IDE the tests run in, these get Grazie's own levels; the tests therefore read the
+    // children's severities from the profile. Either way the runner is a warning and each child is something else.
+    private class GrazieInspectionRunner : TestInspection(HighlightDisplayLevel.WARNING)
+    private class GrazieInspection : TestInspection(HighlightDisplayLevel.ERROR)
+    private class GrazieStyle : TestInspection(HighlightDisplayLevel.WEAK_WARNING)
+
+    private companion object {
+        const val BUGGY_BUILD = 253
+        const val FIXED_BUILD = 261
+    }
 }
