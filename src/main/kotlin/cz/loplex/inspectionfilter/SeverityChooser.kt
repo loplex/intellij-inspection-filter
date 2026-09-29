@@ -1,5 +1,6 @@
 package cz.loplex.inspectionfilter
 
+import com.intellij.codeHighlighting.HighlightDisplayLevel
 import com.intellij.lang.annotation.HighlightSeverity
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionPlaces
@@ -12,9 +13,14 @@ import com.intellij.openapi.ui.ComboBox
 import com.intellij.ui.CollectionComboBoxModel
 import com.intellij.ui.SimpleListCellRenderer
 import com.intellij.ui.components.JBCheckBox
+import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBRadioButton
+import com.intellij.ui.dsl.builder.RightGap
 import com.intellij.ui.dsl.builder.panel
+import java.awt.event.MouseAdapter
+import java.awt.event.MouseEvent
 import java.awt.BorderLayout
+import javax.swing.Icon
 import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.JScrollPane
@@ -58,9 +64,24 @@ internal class SeverityChooser(private val project: Project) {
 
     private fun buildContent(): JComponent {
         val severities = availableSeverities(project)
-        val checkBoxes = severities.associate { it.name to JBCheckBox(it.displayCapitalizedName) }
+        val checkBoxes = severities.associate { it.name to JBCheckBox() }
+        // Beside the check box rather than its text, which cannot carry an icon: a check box's own icon replaces its box.
+        val labels = severities.associate { severity ->
+            val checkBox = checkBoxes.getValue(severity.name)
+            severity.name to JBLabel(severity.displayCapitalizedName, severityIcon(severity), JBLabel.LEADING).apply {
+                labelFor = checkBox
+                addMouseListener(object : MouseAdapter() {
+                    override fun mouseClicked(e: MouseEvent) {
+                        if (checkBox.isEnabled) checkBox.doClick()
+                    }
+                })
+            }
+        }
         val lowest = ComboBox(CollectionComboBoxModel(severities, severities.first { it.name == loadLowestSeverityName(project) }))
-        lowest.renderer = SimpleListCellRenderer.create("") { it.displayCapitalizedName }
+        lowest.renderer = SimpleListCellRenderer.create { label, severity, _ ->
+            label.text = severity?.displayCapitalizedName.orEmpty()
+            label.icon = severity?.let(::severityIcon)
+        }
         val selectedMode = JBRadioButton(InspectionFilterBundle.message("dialog.severities.mode.selected"))
         val thisAndHigherMode = JBRadioButton(InspectionFilterBundle.message("dialog.severities.mode.thisAndHigher"))
         when (loadSeverityMode(project)) {
@@ -75,6 +96,7 @@ internal class SeverityChooser(private val project: Project) {
             for ((name, checkBox) in checkBoxes) {
                 checkBox.isEnabled = !thisAndHigher
                 checkBox.isSelected = name in reportedSeverityNames
+                labels.getValue(name).isEnabled = !thisAndHigher
             }
             changeListeners.forEach { it() }
         }
@@ -113,8 +135,11 @@ internal class SeverityChooser(private val project: Project) {
                 }
             }
             indent {
-                for (checkBox in checkBoxes.values) {
-                    row { cell(checkBox) }
+                for ((name, checkBox) in checkBoxes) {
+                    row {
+                        cell(checkBox).gap(RightGap.SMALL)
+                        cell(labels.getValue(name))
+                    }
                 }
             }
             row {
@@ -133,6 +158,9 @@ internal class SeverityChooser(private val project: Project) {
         growDialogToFit(component)
     }
 }
+
+/** The icon the inspection settings show beside [severity], custom severities included. */
+private fun severityIcon(severity: HighlightSeverity): Icon? = HighlightDisplayLevel.find(severity)?.icon
 
 /**
  * Makes the dialog around [component] large enough for what it now holds, without ever shrinking it.
