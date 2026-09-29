@@ -10,7 +10,6 @@ import com.intellij.openapi.application.ApplicationInfo
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.text.HtmlChunk
 import com.intellij.profile.codeInspection.InspectionProjectProfileManager
-import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.dsl.builder.AlignX
 import com.intellij.ui.dsl.builder.TopGap
@@ -37,10 +36,7 @@ internal class InspectCodeBySeverityAction : CodeInspectionAction() {
         // Read rather than myExternalProfile: a combo notifies the listener added last first, so while ours runs, the
         // one that sets myExternalProfile has not run yet.
         val profilesCombo = profileSettings?.let { UIUtil.findComponentOfType(it, SchemesCombo::class.java) }
-        val selected = loadSelectedSeverityNames(project)
-        val checkBoxes = availableSeverities(project).associate { severity ->
-            severity.name to JBCheckBox(severity.displayCapitalizedName, severity.name in selected)
-        }
+        val severityChooser = SeverityChooser(project)
         val baselineVersion = ApplicationInfo.getInstance().build.baselineVersion
         val grazieWarning = JBLabel(InspectionFilterBundle.message("dialog.grazie.warning.text"), AllIcons.General.Warning,
                                     JBLabel.LEADING)
@@ -57,23 +53,14 @@ internal class InspectCodeBySeverityAction : CodeInspectionAction() {
             val profile = profilesCombo?.selectedScheme as? InspectionProfileImpl
                           ?: InspectionProjectProfileManager.getInstance(project).currentProfile
             val shown = filterBreaksGrazieRunner(profile, InspectionProjectProfileManager.getInstance(project).currentProfile,
-                                                 checkBoxes.filterValues { it.isSelected }.keys, project, baselineVersion)
+                                                 severityChooser.reportedSeverityNames, project, baselineVersion)
             if (shown) {
                 grazieWarning.toolTipText = grazieWarningTooltip(profile, project)
             }
             grazieWarningLayout.show(grazieWarningCards, if (shown) GRAZIE_WARNING_SHOWN else GRAZIE_WARNING_HIDDEN)
         }
 
-        for (checkBox in checkBoxes.values) {
-            checkBox.addActionListener {
-                // A run with no severity chosen would switch every inspection off, so the last one cannot be cleared.
-                if (checkBoxes.values.none { it.isSelected }) {
-                    checkBox.isSelected = true
-                }
-                storeSelectedSeverityNames(project, checkBoxes.filterValues { it.isSelected }.keys)
-                updateGrazieWarning()
-            }
-        }
+        severityChooser.addChangeListener { updateGrazieWarning() }
         profilesCombo?.addActionListener { updateGrazieWarning() }
         updateGrazieWarning()
 
@@ -89,9 +76,7 @@ internal class InspectCodeBySeverityAction : CodeInspectionAction() {
                 row { cell(grazieWarningCards) }.topGap(TopGap.MEDIUM)
             }
             group(InspectionFilterBundle.message("dialog.severities.title")) {
-                for (checkBox in checkBoxes.values) {
-                    row { cell(checkBox) }
-                }
+                row { cell(severityChooser.component).align(AlignX.FILL) }
             }.apply { if (hasGrazieWarningRow) topGap(TopGap.NONE) }
         }
     }
@@ -103,7 +88,7 @@ internal class InspectCodeBySeverityAction : CodeInspectionAction() {
         // chosen now could only narrow it, and a repeated run is meant to repeat the run. ("Rerun" in the results does
         // not come back here: it runs the same inspection context, profile and all, again.)
         if (profile !is SeverityFilteredProfile) {
-            myExternalProfile = SeverityFilteredProfile(profile, loadSelectedSeverityNames(project), project)
+            myExternalProfile = SeverityFilteredProfile(profile, loadReportedSeverityNames(project), project)
         }
         super.runInspections(project, scope)
     }

@@ -61,22 +61,6 @@ class SeverityFilteredProfileTest : BasePlatformTestCase() {
         assertEquals(listOf("AWarning", "AnError"), enabledToolNames(source))
     }
 
-    fun testErrorsAndWarningsAreChosenUntilSomethingElseIs() {
-        assertEquals(setOf(HighlightSeverity.ERROR.name, HighlightSeverity.WARNING.name),
-                     loadSelectedSeverityNames(project))
-
-        storeSelectedSeverityNames(project, listOf(HighlightSeverity.WEAK_WARNING.name))
-
-        assertEquals(setOf(HighlightSeverity.WEAK_WARNING.name), loadSelectedSeverityNames(project))
-    }
-
-    fun testAChoiceOfSeveritiesThatNoLongerExistFallsBackToTheDefault() {
-        storeSelectedSeverityNames(project, listOf("A severity since removed"))
-
-        assertEquals(setOf(HighlightSeverity.ERROR.name, HighlightSeverity.WARNING.name),
-                     loadSelectedSeverityNames(project))
-    }
-
     fun testBefore261TheGrazieRunnerIsSwitchedOffWithNoneOfItsChildren() {
         val source = profileOf(GrazieInspectionRunner(), GrazieInspection(), GrazieStyle())
 
