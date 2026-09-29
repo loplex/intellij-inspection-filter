@@ -5,14 +5,8 @@ import com.intellij.codeInspection.CleanupLocalInspectionTool
 import com.intellij.codeInspection.GlobalInspectionTool
 import com.intellij.codeInspection.InspectionProfileEntry
 import com.intellij.codeInspection.LocalInspectionTool
-import com.intellij.codeInspection.ex.GlobalInspectionToolWrapper
 import com.intellij.codeInspection.ex.InspectionProfileImpl
-import com.intellij.codeInspection.ex.InspectionToolWrapper
-import com.intellij.codeInspection.ex.InspectionToolsSupplier
-import com.intellij.codeInspection.ex.LocalInspectionToolWrapper
 import com.intellij.lang.annotation.HighlightSeverity
-import com.intellij.profile.codeInspection.BaseInspectionProfileManager
-import com.intellij.profile.codeInspection.InspectionProfileManager
 import com.intellij.psi.search.scope.TestsScope
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 
@@ -215,30 +209,13 @@ class FilteredProfileTest : BasePlatformTestCase() {
         profile.getToolsOrNull(shortName, project)!!.level.severity.name
 
     private fun profileOf(vararg inspections: InspectionProfileEntry): InspectionProfileImpl =
-        newProfile("Source", supplierOf(*inspections), InspectionProfileImpl.BASE_PROFILE.get())
+        newProfile("Source", supplierOf(*inspections), InspectionProfileImpl.BASE_PROFILE.get(), project)
 
     /** A profile of [inspections], and another of them as they are by default, for the first to be modified against. */
     private fun profileAndDefaultsOf(vararg inspections: InspectionProfileEntry): Pair<InspectionProfileImpl, InspectionProfileImpl> {
         val supplier = supplierOf(*inspections)
-        val defaults = newProfile("Defaults", supplier, InspectionProfileImpl.BASE_PROFILE.get())
-        return newProfile("Source", supplier, defaults) to defaults
-    }
-
-    private fun supplierOf(vararg inspections: InspectionProfileEntry) = object : InspectionToolsSupplier() {
-        override fun createTools(): List<InspectionToolWrapper<*, *>> = inspections.map {
-            when (it) {
-                is LocalInspectionTool -> LocalInspectionToolWrapper(it)
-                is GlobalInspectionTool -> GlobalInspectionToolWrapper(it)
-                else -> error("Neither local nor global: $it")
-            }
-        }
-    }
-
-    private fun newProfile(name: String, supplier: InspectionToolsSupplier, base: InspectionProfileImpl): InspectionProfileImpl {
-        val profile = InspectionProfileImpl(name, supplier, InspectionProfileManager.getInstance() as BaseInspectionProfileManager,
-                                            base, null)
-        profile.initInspectionTools(project)
-        return profile
+        val defaults = newProfile("Defaults", supplier, InspectionProfileImpl.BASE_PROFILE.get(), project)
+        return newProfile("Source", supplier, defaults, project) to defaults
     }
 
     private fun enabledToolNames(profile: InspectionProfileImpl): List<String> =
