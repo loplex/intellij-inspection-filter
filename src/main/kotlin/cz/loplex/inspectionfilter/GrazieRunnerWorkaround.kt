@@ -20,6 +20,7 @@ import com.intellij.openapi.project.Project
  * The runner is a warning and its children are not, so filtering by severity alone breaks the run both ways: errors and
  * warnings keep the runner and drop the children, and "Grammar error" alone drops the runner, which leaves the child
  * with nothing to report. Here the runner is therefore on in a filtered run exactly when one of its children is.
+ * Filtering by group cannot split them: the runner and its children are all in Proofreading.
  *
  * That still leaves a choice of one child without the other, while the other is on in the project's profile: the runner
  * reports under both. The dialog warns about it (see [filterBreaksGrazieRunner]).
@@ -38,40 +39,40 @@ internal fun grazieRunnerWorkaroundApplies(profile: InspectionProfileImpl, proje
     baselineVersion < FIRST_FIXED_BASELINE_VERSION && profile.getToolsOrNull(GRAZIE_RUNNER, project) != null
 
 /**
- * Whether the Grazie runner is to be on in a copy of [profile] filtered to [severityNames]: when any of its children is.
- * A runner switched off in [profile] stays off.
+ * Whether the Grazie runner is to be on in a copy of [profile] filtered by [filter]: when any of its children is, and
+ * its own group is included. A runner switched off in [profile] stays off.
  *
- * Null where the runner is left to the severity filter like any other inspection: from build 261 on, or with Grazie
- * not in [profile].
+ * Null where the runner is left to the filter like any other inspection: from build 261 on, or with Grazie not in
+ * [profile].
  */
 internal fun grazieRunnerEnabled(
     profile: InspectionProfileImpl,
-    severityNames: Set<String>,
+    filter: InspectionFilter,
     project: Project,
     baselineVersion: Int,
 ): Boolean? {
     if (!grazieRunnerWorkaroundApplies(profile, project, baselineVersion)) return null
     val runner = profile.getToolsOrNull(GRAZIE_RUNNER, project)!!
-    return runner.isEnabled &&
-           GRAZIE_RUNNER_CHILDREN.any { profile.getToolsOrNull(it, project)?.isKeptBy(severityNames) == true }
+    return runner.isEnabled && filter.groups.includes(runner.groupPath) &&
+           GRAZIE_RUNNER_CHILDREN.any { profile.getToolsOrNull(it, project)?.isKeptBy(filter) == true }
 }
 
 /**
- * Whether a run of [profile] filtered to [severityNames] hits the bug: the runner runs, and reports under a child that
- * the filter has switched off. Which children it reports under is decided by [projectProfile], whichever profile the
- * run is given.
+ * Whether a run of [profile] filtered by [filter] hits the bug: the runner runs, and reports under a child that the
+ * filter has switched off. Which children it reports under is decided by [projectProfile], whichever profile the run
+ * is given.
  */
 internal fun filterBreaksGrazieRunner(
     profile: InspectionProfileImpl,
     projectProfile: InspectionProfileImpl,
-    severityNames: Set<String>,
+    filter: InspectionFilter,
     project: Project,
     baselineVersion: Int,
 ): Boolean {
-    if (grazieRunnerEnabled(profile, severityNames, project, baselineVersion) != true) return false
+    if (grazieRunnerEnabled(profile, filter, project, baselineVersion) != true) return false
     return GRAZIE_RUNNER_CHILDREN.any { child ->
         projectProfile.getToolsOrNull(child, project)?.isEnabled == true &&
-        profile.getToolsOrNull(child, project)?.isKeptBy(severityNames) != true
+        profile.getToolsOrNull(child, project)?.isKeptBy(filter) != true
     }
 }
 

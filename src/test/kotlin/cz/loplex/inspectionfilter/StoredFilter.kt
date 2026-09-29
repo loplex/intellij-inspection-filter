@@ -9,7 +9,7 @@ import com.intellij.openapi.project.Project
  */
 internal fun forgetStoredFilter(project: Project) {
     val properties = PropertiesComponent.getInstance(project)
-    for (key in SEVERITY_SELECTION_KEYS) {
+    for (key in SEVERITY_SELECTION_KEYS + GROUP_SELECTION_KEYS) {
         properties.unsetValue(key)
         // Lists are kept apart from values, and unsetValue leaves them be.
         properties.setList(key, null)

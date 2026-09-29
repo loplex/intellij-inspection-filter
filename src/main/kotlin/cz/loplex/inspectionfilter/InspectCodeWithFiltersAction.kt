@@ -23,11 +23,11 @@ private const val GRAZIE_WARNING_SHOWN = "shown"
 private const val GRAZIE_WARNING_HIDDEN = "hidden"
 
 /**
- * "Inspect Code", with a choice of the severities to report.
+ * "Inspect Code", with a choice of the severities and groups of inspections to report.
  *
- * The dialog is the one "Inspect Code" shows, with the severities added under the profile. The inspections are then
- * run with a copy of the chosen profile in which those of any other severity are switched off - see
- * [SeverityFilteredProfile] - so the results hold nothing else, and "Rerun" in the results keeps the same filter.
+ * The dialog is the one "Inspect Code" shows, with the choice added under the profile. The inspections are then run
+ * with a copy of the chosen profile in which all the others are switched off - see [FilteredProfile] - so the results
+ * hold nothing else, and "Rerun" in the results keeps the same filter.
  */
 internal class InspectCodeWithFiltersAction : CodeInspectionAction() {
 
@@ -37,6 +37,7 @@ internal class InspectCodeWithFiltersAction : CodeInspectionAction() {
         // one that sets myExternalProfile has not run yet.
         val profilesCombo = profileSettings?.let { UIUtil.findComponentOfType(it, SchemesCombo::class.java) }
         val severityChooser = SeverityChooser(project)
+        val groupChooser = GroupChooser(project)
         val baselineVersion = ApplicationInfo.getInstance().build.baselineVersion
         val grazieWarning = JBLabel(InspectionFilterBundle.message("dialog.grazie.warning.text"), AllIcons.General.Warning,
                                     JBLabel.LEADING)
@@ -49,11 +50,15 @@ internal class InspectCodeWithFiltersAction : CodeInspectionAction() {
             add(JPanel().apply { isOpaque = false }, GRAZIE_WARNING_HIDDEN)
         }
 
+        fun selectedProfile(): InspectionProfileImpl =
+            profilesCombo?.selectedScheme as? InspectionProfileImpl
+            ?: InspectionProjectProfileManager.getInstance(project).currentProfile
+
         fun updateGrazieWarning() {
-            val profile = profilesCombo?.selectedScheme as? InspectionProfileImpl
-                          ?: InspectionProjectProfileManager.getInstance(project).currentProfile
+            val profile = selectedProfile()
+            val filter = InspectionFilter(severityChooser.reportedSeverityNames, groupChooser.selection)
             val shown = filterBreaksGrazieRunner(profile, InspectionProjectProfileManager.getInstance(project).currentProfile,
-                                                 severityChooser.reportedSeverityNames, project, baselineVersion)
+                                                 filter, project, baselineVersion)
             if (shown) {
                 grazieWarning.toolTipText = grazieWarningTooltip(profile, project)
             }
@@ -61,7 +66,12 @@ internal class InspectCodeWithFiltersAction : CodeInspectionAction() {
         }
 
         severityChooser.addChangeListener { updateGrazieWarning() }
-        profilesCombo?.addActionListener { updateGrazieWarning() }
+        groupChooser.addChangeListener { updateGrazieWarning() }
+        profilesCombo?.addActionListener {
+            groupChooser.setProfile(selectedProfile())
+            updateGrazieWarning()
+        }
+        groupChooser.setProfile(selectedProfile())
         updateGrazieWarning()
 
         return panel {
@@ -78,6 +88,9 @@ internal class InspectCodeWithFiltersAction : CodeInspectionAction() {
             group(InspectionFilterBundle.message("dialog.severities.title")) {
                 row { cell(severityChooser.component).align(AlignX.FILL) }
             }.apply { if (hasGrazieWarningRow) topGap(TopGap.NONE) }
+            group(InspectionFilterBundle.message("dialog.groups.title")) {
+                row { cell(groupChooser.component).align(AlignX.FILL) }
+            }
         }
     }
 
@@ -87,8 +100,8 @@ internal class InspectCodeWithFiltersAction : CodeInspectionAction() {
         // comes back here with the profile of the run it repeats, already filtered. Filtering it again by what is
         // chosen now could only narrow it, and a repeated run is meant to repeat the run. ("Rerun" in the results does
         // not come back here: it runs the same inspection context, profile and all, again.)
-        if (profile !is SeverityFilteredProfile) {
-            myExternalProfile = SeverityFilteredProfile(profile, loadReportedSeverityNames(project), project)
+        if (profile !is FilteredProfile) {
+            myExternalProfile = FilteredProfile(profile, loadInspectionFilter(project), project)
         }
         super.runInspections(project, scope)
     }

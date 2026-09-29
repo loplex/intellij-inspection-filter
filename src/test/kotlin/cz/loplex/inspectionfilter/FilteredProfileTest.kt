@@ -12,7 +12,7 @@ import com.intellij.profile.codeInspection.InspectionProfileManager
 import com.intellij.psi.search.scope.TestsScope
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 
-class SeverityFilteredProfileTest : BasePlatformTestCase() {
+class FilteredProfileTest : BasePlatformTestCase() {
 
     override fun setUp() {
         super.setUp()
@@ -32,7 +32,7 @@ class SeverityFilteredProfileTest : BasePlatformTestCase() {
     fun testInspectionsOfOtherSeveritiesAreSwitchedOff() {
         val source = profileOf(AnError(), AWarning(), AWeakWarning())
 
-        val filtered = SeverityFilteredProfile(source, setOf(HighlightSeverity.ERROR.name), project)
+        val filtered = FilteredProfile(source, InspectionFilter(setOf(HighlightSeverity.ERROR.name)), project)
 
         assertEquals(listOf("AnError"), enabledToolNames(filtered))
     }
@@ -43,7 +43,7 @@ class SeverityFilteredProfileTest : BasePlatformTestCase() {
         source.addScope(source.getInspectionTool(inspection.shortName, project)!!, TestsScope.INSTANCE,
                         HighlightDisplayLevel.WARNING, true, project)
 
-        val filtered = SeverityFilteredProfile(source, setOf(HighlightSeverity.WARNING.name), project)
+        val filtered = FilteredProfile(source, InspectionFilter(setOf(HighlightSeverity.WARNING.name)), project)
 
         val tools = filtered.getTools(inspection.shortName, project)
         assertTrue(tools.isEnabled)
@@ -56,15 +56,35 @@ class SeverityFilteredProfileTest : BasePlatformTestCase() {
     fun testTheSourceProfileIsLeftAsItWas() {
         val source = profileOf(AnError(), AWarning())
 
-        SeverityFilteredProfile(source, setOf(HighlightSeverity.ERROR.name), project)
+        FilteredProfile(source, InspectionFilter(setOf(HighlightSeverity.ERROR.name)), project)
 
         assertEquals(listOf("AWarning", "AnError"), enabledToolNames(source))
+    }
+
+    fun testInspectionsOfTheGroupsLeftOutAreSwitchedOff() {
+        val source = profileOf(AnError(), AWarning(), AnErrorOfAnotherGroup())
+        val groups = GroupSelection(mapOf(listOf("Other") to false))
+
+        val filtered = FilteredProfile(source, InspectionFilter(setOf(HighlightSeverity.ERROR.name), groups), project)
+
+        assertEquals(listOf("AnError"), enabledToolNames(filtered))
+    }
+
+    fun testBefore261TheGrazieRunnerIsSwitchedOffWithItsGroup() {
+        val source = profileOf(GrazieInspectionRunner(), GrazieInspection(), GrazieStyle())
+        val grammar = severityOf(source, "GrazieInspection")
+        // Read from the profile, like the severities: where Grazie is loaded, the group is Grazie's own.
+        val group = source.getToolsOrNull(GRAZIE_RUNNER, project)!!.groupPath
+        val filter = InspectionFilter(setOf(grammar, HighlightSeverity.WARNING.name), GroupSelection(mapOf(group to false)))
+
+        assertEquals(emptyList<String>(), enabledToolNames(FilteredProfile(source, filter, project, BUGGY_BUILD)))
+        assertFalse(filterBreaksGrazieRunner(source, source, filter, project, BUGGY_BUILD))
     }
 
     fun testBefore261TheGrazieRunnerIsSwitchedOffWithNoneOfItsChildren() {
         val source = profileOf(GrazieInspectionRunner(), GrazieInspection(), GrazieStyle())
 
-        val filtered = SeverityFilteredProfile(source, setOf(HighlightSeverity.WARNING.name), project, BUGGY_BUILD)
+        val filtered = FilteredProfile(source, InspectionFilter(setOf(HighlightSeverity.WARNING.name)), project, BUGGY_BUILD)
 
         assertEquals(emptyList<String>(), enabledToolNames(filtered))
     }
@@ -72,7 +92,8 @@ class SeverityFilteredProfileTest : BasePlatformTestCase() {
     fun testBefore261TheGrazieRunnerRunsForAChildWhateverItsOwnSeverity() {
         val source = profileOf(GrazieInspectionRunner(), GrazieInspection(), GrazieStyle())
 
-        val filtered = SeverityFilteredProfile(source, setOf(severityOf(source, "GrazieInspection")), project, BUGGY_BUILD)
+        val filtered = FilteredProfile(source, InspectionFilter(setOf(severityOf(source, "GrazieInspection"))), project,
+                                       BUGGY_BUILD)
 
         assertEquals(listOf("GrazieInspection", "GrazieInspectionRunner"), enabledToolNames(filtered))
     }
@@ -84,7 +105,7 @@ class SeverityFilteredProfileTest : BasePlatformTestCase() {
         val grammar = severityOf(source, "GrazieInspection")
 
         assertEquals(listOf("GrazieInspection"),
-                     enabledToolNames(SeverityFilteredProfile(source, setOf(grammar), project, BUGGY_BUILD)))
+                     enabledToolNames(FilteredProfile(source, InspectionFilter(setOf(grammar)), project, BUGGY_BUILD)))
         assertFalse(breaksGrazieRunner(source, source, grammar, build = BUGGY_BUILD))
     }
 
@@ -92,10 +113,11 @@ class SeverityFilteredProfileTest : BasePlatformTestCase() {
         val source = profileOf(GrazieInspectionRunner(), GrazieInspection(), GrazieStyle())
 
         assertEquals(listOf("GrazieInspection"),
-                     enabledToolNames(SeverityFilteredProfile(source, setOf(severityOf(source, "GrazieInspection")), project,
-                                                              FIXED_BUILD)))
+                     enabledToolNames(FilteredProfile(source, InspectionFilter(setOf(severityOf(source, "GrazieInspection"))),
+                                                      project, FIXED_BUILD)))
         assertEquals(listOf("GrazieInspectionRunner"),
-                     enabledToolNames(SeverityFilteredProfile(source, setOf(HighlightSeverity.WARNING.name), project, FIXED_BUILD)))
+                     enabledToolNames(FilteredProfile(source, InspectionFilter(setOf(HighlightSeverity.WARNING.name)), project,
+                                                      FIXED_BUILD)))
     }
 
     fun testBefore261ChoosingOneGrazieChildWithoutTheOtherBreaksTheRun() {
@@ -130,7 +152,7 @@ class SeverityFilteredProfileTest : BasePlatformTestCase() {
         val source = profileOf(AnError(), AWarning())
 
         assertEquals(listOf("AnError"),
-                     enabledToolNames(SeverityFilteredProfile(source, setOf(HighlightSeverity.ERROR.name), project, BUGGY_BUILD)))
+                     enabledToolNames(FilteredProfile(source, InspectionFilter(setOf(HighlightSeverity.ERROR.name)), project, BUGGY_BUILD)))
         assertFalse(breaksGrazieRunner(source, source, HighlightSeverity.ERROR.name, build = BUGGY_BUILD))
     }
 
@@ -139,7 +161,7 @@ class SeverityFilteredProfileTest : BasePlatformTestCase() {
         projectProfile: InspectionProfileImpl,
         vararg severityNames: String,
         build: Int,
-    ): Boolean = filterBreaksGrazieRunner(profile, projectProfile, severityNames.toSet(), project, build)
+    ): Boolean = filterBreaksGrazieRunner(profile, projectProfile, InspectionFilter(severityNames.toSet()), project, build)
 
     private fun severityOf(profile: InspectionProfileImpl, shortName: String): String =
         profile.getToolsOrNull(shortName, project)!!.level.severity.name
@@ -158,10 +180,14 @@ class SeverityFilteredProfileTest : BasePlatformTestCase() {
 
     // One class per inspection, each with a constructor taking nothing: copying a profile copies its inspections by
     // instantiating their classes anew, the way the platform instantiates those registered in plugin.xml.
-    private abstract class TestInspection(private val level: HighlightDisplayLevel) : LocalInspectionTool() {
+    private abstract class TestInspection(
+        private val level: HighlightDisplayLevel,
+        private val group: GroupPath = listOf("Test"),
+    ) : LocalInspectionTool() {
         override fun getShortName(): String = javaClass.simpleName
         override fun getDisplayName(): String = shortName
-        override fun getGroupDisplayName(): String = "Test"
+        override fun getGroupDisplayName(): String = group.last()
+        override fun getGroupPath(): Array<String> = group.toTypedArray()
         override fun getDefaultLevel(): HighlightDisplayLevel = level
         override fun isEnabledByDefault(): Boolean = true
     }
@@ -169,10 +195,11 @@ class SeverityFilteredProfileTest : BasePlatformTestCase() {
     private class AnError : TestInspection(HighlightDisplayLevel.ERROR)
     private class AWarning : TestInspection(HighlightDisplayLevel.WARNING)
     private class AWeakWarning : TestInspection(HighlightDisplayLevel.WEAK_WARNING)
+    private class AnErrorOfAnotherGroup : TestInspection(HighlightDisplayLevel.ERROR, listOf("Other", "Subgroup"))
 
-    // Named as Grazie names them. A wrapper takes the level registered under its inspection's name, so where Grazie is
-    // loaded, as it is in the IDE the tests run in, these get Grazie's own levels; the tests therefore read the
-    // children's severities from the profile. Either way the runner is a warning and each child is something else.
+    // Named as Grazie names them. A wrapper takes the level and group registered under its inspection's name, so where
+    // Grazie is loaded, as it is in the IDE the tests run in, these get Grazie's own; the tests therefore read the
+    // children's severities, and the group, from the profile. Either way the runner is a warning and each child is something else.
     private class GrazieInspectionRunner : TestInspection(HighlightDisplayLevel.WARNING)
     private class GrazieInspection : TestInspection(HighlightDisplayLevel.ERROR)
     private class GrazieStyle : TestInspection(HighlightDisplayLevel.WEAK_WARNING)
