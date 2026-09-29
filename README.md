@@ -18,6 +18,7 @@ The profile itself is not changed: the run uses a copy of it with the other insp
   — Grazie, and the warning in the dialog.
 - [Installing](#installing) — requirements, building the plugin archive.
 - [Development](#development) — running, testing and verifying it.
+- [License](#license) — AGPL-3.0-or-later.
 
 ## Using it
 
@@ -114,3 +115,11 @@ The JDK 21 the plugin is compiled with is downloaded if none is found.
 | `./gradlew verifyPlugin` | checks binary compatibility with the recommended IDE builds         |
 
 `verifyPlugin` downloads each IDE build it checks.
+
+## License
+
+Copyright (C) 2026 Martin Lopatář
+
+GNU Affero General Public License, version 3 or any later version; see [LICENSE](LICENSE).\
+The plugin uses only APIs of the open-source IntelliJ Platform,
+[intellij-community](https://github.com/JetBrains/intellij-community), which is under the Apache License 2.0.
