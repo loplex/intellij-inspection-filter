@@ -3,10 +3,15 @@ package cz.loplex.inspectionfilter
 import com.intellij.analysis.AnalysisScope
 import com.intellij.analysis.BaseAnalysisActionDialog
 import com.intellij.application.options.schemes.SchemesCombo
+import com.intellij.codeInspection.InspectionManager
 import com.intellij.codeInspection.actions.CodeInspectionAction
+import com.intellij.codeInspection.ex.GlobalInspectionContextEx
+import com.intellij.codeInspection.ex.InspectionManagerEx
 import com.intellij.codeInspection.ex.InspectionProfileImpl
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.application.ApplicationInfo
+import com.intellij.openapi.fileEditor.FileDocumentManager
+import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.text.HtmlChunk
 import com.intellij.profile.codeInspection.InspectionProjectProfileManager
@@ -30,6 +35,12 @@ private const val GRAZIE_WARNING_HIDDEN = "hidden"
  * hold nothing else, and "Rerun" in the results keeps the same filter.
  */
 internal class InspectCodeWithFiltersAction : CodeInspectionAction() {
+
+    /** The number of the run started last, which tells the "Rerun" of an older one that its state is gone. */
+    private var lastRunId = 0
+
+    /** The context of the run being started, or of the one its "Rerun" repeats. */
+    private var context: GlobalInspectionContextEx? = null
 
     override fun getAdditionalActionSettings(project: Project, dialog: BaseAnalysisActionDialog): JComponent {
         val profileSettings = super.getAdditionalActionSettings(project, dialog)
@@ -115,7 +126,45 @@ internal class InspectCodeWithFiltersAction : CodeInspectionAction() {
         if (profile !is FilteredProfile) {
             myExternalProfile = FilteredProfile(profile, loadInspectionFilter(project), project)
         }
-        super.runInspections(project, scope)
+        runInspectionsInOwnContext(project, scope)
+    }
+
+    override fun analyze(project: Project, scope: AnalysisScope) {
+        try {
+            super.analyze(project, scope)
+        }
+        finally {
+            context = null
+        }
+    }
+
+    /**
+     * What [CodeInspectionAction.runInspections] does, step for step, but in a context this action holds itself, so
+     * that it can set the context up before the run starts: the one the platform's action holds is private to it.
+     */
+    private fun runInspectionsInOwnContext(project: Project, scope: AnalysisScope) {
+        val runId = ++lastRunId
+        scope.setSearchInLibraries(false)
+        FileDocumentManager.getInstance().saveAllDocuments()
+
+        val externalProfile = myExternalProfile
+        val context = context ?: (InspectionManager.getInstance(project) as InspectionManagerEx).createNewGlobalContext()
+            .also { context = it }
+        context.setRerunAction {
+            DumbService.getInstance(project).smartInvokeLater {
+                // Another run has started since, and the state of this one is gone.
+                if (runId != lastRunId || project.isDisposed || !scope.isValid) {
+                    return@smartInvokeLater
+                }
+                myExternalProfile = externalProfile
+                this.context = context
+                FileDocumentManager.getInstance().saveAllDocuments()
+                analyze(project, scope)
+            }
+        }
+        context.setExternalProfile(externalProfile)
+        context.setCurrentScope(scope)
+        context.doInspections(scope)
     }
 }
 
