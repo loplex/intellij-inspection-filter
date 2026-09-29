@@ -169,7 +169,7 @@ internal class InspectCodeWithFiltersAction : CodeInspectionAction() {
             }
         }
         context.setExternalProfile(externalProfile)
-        filterProblems(context, (externalProfile as? FilteredProfile)?.filter?.problems)
+        filterProblems(context, (externalProfile as? FilteredProfile)?.problemFilter)
         context.setCurrentScope(scope)
         context.doInspections(scope)
     }

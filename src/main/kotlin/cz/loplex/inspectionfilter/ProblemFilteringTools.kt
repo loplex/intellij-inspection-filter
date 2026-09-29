@@ -40,8 +40,11 @@ import org.jdom.Element
  * Global inspections are left as they are, and filtered by the run instead: they report through a processor rather
  * than a holder, and the results show only what the run has kept. The same goes for the local inspections that run
  * in batch mode as a global one, which the run finds by the type of the local one's tool: wrapped, it would not.
+ *
+ * A wrapped inspection is not run at all in a file where [filter] can accept no problem - one with no changed line,
+ * when only the problems on those are reported.
  */
-internal fun wrapForProblemFilter(wrapper: InspectionToolWrapper<*, *>, filter: ProblemFilter): InspectionToolWrapper<*, *> {
+internal fun wrapForProblemFilter(wrapper: InspectionToolWrapper<*, *>, filter: RunProblemFilter): InspectionToolWrapper<*, *> {
     if (wrapper !is LocalInspectionToolWrapper) {
         return wrapper
     }
@@ -54,7 +57,8 @@ internal fun wrapForProblemFilter(wrapper: InspectionToolWrapper<*, *>, filter: 
 
 /**
  * Sets [context] up to filter by [filter] the problems that the profile of its run cannot - those of the inspections
- * [wrapForProblemFilter] leaves as they are - or to filter none, when [filter] is null or leaves nothing out.
+ * [wrapForProblemFilter] leaves as they are - or to filter none, when [filter] is null or leaves nothing out. The
+ * context also keeps [filter] as [RUN_PROBLEM_FILTER], for each of its runs to find the lines changed for it.
  *
  * The run decides for all the problems an inspection reports in one element - a class, a method, a file - at once,
  * and keeps them all when [filter] accepts any one. Some global inspections, such as "Unused declaration", also show
@@ -64,8 +68,9 @@ internal fun wrapForProblemFilter(wrapper: InspectionToolWrapper<*, *>, filter: 
  * and leaves out only what is excluded. It also reaches an element through each one that refines to it, as an implicit
  * constructor does to its class, and those are excluded with it.
  */
-internal fun filterProblems(context: GlobalInspectionContextEx, filter: ProblemFilter?) {
-    if (filter == null || !filter.isActive) {
+internal fun filterProblems(context: GlobalInspectionContextEx, filter: RunProblemFilter?) {
+    context.putUserData(RUN_PROBLEM_FILTER, filter)
+    if (filter == null || !filter.filter.isActive) {
         context.setReportedProblemFilter(null)
         context.setGlobalReportedProblemFilter(null)
         return
@@ -115,15 +120,15 @@ private class RefinedFrom {
 /** The wrapper of a filtering tool, which keeps the extension - and so the name, language etc. - of [original]. */
 private class FilteringLocalInspectionToolWrapper : LocalInspectionToolWrapper {
     private val original: LocalInspectionToolWrapper
-    private val filter: ProblemFilter
+    private val filter: RunProblemFilter
 
-    constructor(original: LocalInspectionToolWrapper, ep: LocalInspectionEP, filter: ProblemFilter) : super(ep) {
+    constructor(original: LocalInspectionToolWrapper, ep: LocalInspectionEP, filter: RunProblemFilter) : super(ep) {
         this.original = original
         this.filter = filter
         myTool = filteringTool(original.tool, filter)
     }
 
-    constructor(original: LocalInspectionToolWrapper, filter: ProblemFilter) : super(filteringTool(original.tool, filter)) {
+    constructor(original: LocalInspectionToolWrapper, filter: RunProblemFilter) : super(filteringTool(original.tool, filter)) {
         this.original = original
         this.filter = filter
     }
@@ -131,20 +136,23 @@ private class FilteringLocalInspectionToolWrapper : LocalInspectionToolWrapper {
     override fun createCopy(): LocalInspectionToolWrapper = of(original.createCopy(), filter)
 
     companion object {
-        fun of(original: LocalInspectionToolWrapper, filter: ProblemFilter): LocalInspectionToolWrapper {
+        fun of(original: LocalInspectionToolWrapper, filter: RunProblemFilter): LocalInspectionToolWrapper {
             val ep = original.extension
             return if (ep != null) FilteringLocalInspectionToolWrapper(original, ep, filter) else FilteringLocalInspectionToolWrapper(original, filter)
         }
 
-        private fun filteringTool(tool: LocalInspectionTool, filter: ProblemFilter): LocalInspectionTool =
+        private fun filteringTool(tool: LocalInspectionTool, filter: RunProblemFilter): LocalInspectionTool =
             if (tool is ExternalAnnotatorBatchInspection) FilteringExternalAnnotatorTool(tool, filter) else FilteringLocalInspectionTool(tool, filter)
     }
 }
 
-/** A local inspection that runs [delegate], and passes on only the problems [filter] accepts. */
+/**
+ * A local inspection that runs [delegate], and passes on only the problems [filter] accepts - in the files where it can
+ * accept any.
+ */
 private open class FilteringLocalInspectionTool(
     val delegate: LocalInspectionTool,
-    val filter: ProblemFilter,
+    val filter: RunProblemFilter,
 ) : LocalInspectionTool() {
 
     /** Where a session keeps the filtering holder made for the engine's, so that every call gets the same one. */
@@ -178,7 +186,8 @@ private open class FilteringLocalInspectionTool(
     override fun getID(): String = delegate.id
     override fun getAlternativeID(): String? = delegate.alternativeID
     override fun runForWholeFile(): Boolean = delegate.runForWholeFile()
-    override fun isAvailableForFile(file: PsiFile): Boolean = delegate.isAvailableForFile(file)
+    // Asked by the run before it builds a visitor.
+    override fun isAvailableForFile(file: PsiFile): Boolean = filter.mayAcceptIn(file) && delegate.isAvailableForFile(file)
     override fun getProblemElement(psiElement: PsiElement): PsiNamedElement? = delegate.getProblemElement(psiElement)
     override fun isSuppressedFor(element: PsiElement): Boolean = delegate.isSuppressedFor(element)
     override fun getBatchSuppressActions(element: PsiElement?): Array<SuppressQuickFix> = delegate.getBatchSuppressActions(element)
@@ -202,7 +211,7 @@ private open class FilteringLocalInspectionTool(
  * A filtering tool for an external one, such as ShellCheck: the run finds those by the type of their tool, and runs
  * them with [checkFile] rather than a visitor.
  */
-private class FilteringExternalAnnotatorTool(delegate: LocalInspectionTool, filter: ProblemFilter) :
+private class FilteringExternalAnnotatorTool(delegate: LocalInspectionTool, filter: RunProblemFilter) :
     FilteringLocalInspectionTool(delegate, filter), ExternalAnnotatorBatchInspection {
 
     private val external: ExternalAnnotatorBatchInspection get() = delegate as ExternalAnnotatorBatchInspection
@@ -210,13 +219,15 @@ private class FilteringExternalAnnotatorTool(delegate: LocalInspectionTool, filt
     override fun getInspectionForBatchShortName(): String = external.inspectionForBatchShortName
 
     override fun checkFile(file: PsiFile, context: GlobalInspectionContext, manager: InspectionManager): Array<ProblemDescriptor> =
-        external.checkFile(file, context, manager).filter(filter::accepts).toTypedArray()
+        // Not asked whether it is available for the file first, unlike the others.
+        if (!filter.mayAcceptIn(file)) ProblemDescriptor.EMPTY_ARRAY
+        else external.checkFile(file, context, manager).filter(filter::accepts).toTypedArray()
 }
 
 /** Registers in [target] only the problems [filter] accepts. */
 private class FilteringProblemsHolder(
     private val target: ProblemsHolder,
-    private val filter: ProblemFilter,
+    private val filter: RunProblemFilter,
 ) : ProblemsHolder(target.manager, target.file, target.isOnTheFly) {
     override fun registerProblem(problemDescriptor: ProblemDescriptor) {
         if (filter.accepts(problemDescriptor)) {

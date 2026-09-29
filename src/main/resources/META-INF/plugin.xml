@@ -14,8 +14,14 @@
 
     <depends>com.intellij.modules.platform</depends>
     <depends>com.intellij.modules.lang</depends>
+    <!-- Finding the lines changed since the last commit. -->
+    <depends>com.intellij.modules.vcs</depends>
 
     <resource-bundle>messages.InspectionFilterBundle</resource-bundle>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <codeInspection.InspectionExtension implementation="cz.loplex.inspectionfilter.ChangedLinesFinderFactory"/>
+    </extensions>
 
     <actions>
         <action id="cz.loplex.inspectionfilter.InspectCodeWithFilters"

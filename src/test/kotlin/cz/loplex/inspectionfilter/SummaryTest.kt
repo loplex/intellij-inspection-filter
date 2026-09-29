@@ -34,5 +34,8 @@ class SummaryTest : BasePlatformTestCase() {
         assertEquals("With a quick fix", problemSummary(ProblemFilter(withQuickFix = true)))
         assertEquals("Message contains \u201Capple\u201D", problemSummary(ProblemFilter(messageContains = "apple")))
         assertEquals("With a quick fix, message contains \u201Capple\u201D", problemSummary(ProblemFilter(true, "apple")))
+        assertEquals("On lines changed since the last commit", problemSummary(ProblemFilter(onChangedLines = true)))
+        assertEquals("On lines changed since the last commit, with a quick fix, message contains \u201Capple\u201D",
+                     problemSummary(ProblemFilter(true, "apple", true)))
     }
 }

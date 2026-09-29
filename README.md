@@ -4,13 +4,16 @@
 
 An IntelliJ Platform plugin that adds **Inspect Code with Filters…** next to **Inspect Code…**.\
 It runs the same inspections over the same scope, but reports only those of the severities, groups and kinds of
-inspection chosen in its dialog, and of their problems only those with a quick fix or a given text, if asked.
+inspection chosen in its dialog.\
+Of their problems it can also report only those on lines changed since the last commit, with a quick fix, or with a
+given text.
 For example:
 
 - errors and warnings, without the weak warnings and typos around them;
 - everything but Proofreading;
 - only the batch-mode inspections, which the editor never shows;
-- only the problems whose message mentions `Optional`.
+- only the problems whose message mentions `Optional`;
+- only the problems on the lines changed since the last commit.
 
 The inspections left out are not run at all, so a filtered run is also a shorter one.\
 The profile itself is not changed: the run uses a copy of it with the other inspections switched off.
@@ -35,7 +38,7 @@ Each row sums up one filter; **Choose…** opens it.
 | Severities  | the inspections of the severities chosen                         |
 | Groups      | the inspections in the groups chosen                             |
 | Inspections | the inspections that are cleanup, modified or batch-mode ones    |
-| Problems    | the problems with a quick fix, or with a text in their message   |
+| Problems    | the problems on changed lines, with a quick fix, or with a text  |
 
 A problem is reported only when its inspection passes the first three rows, and the problem itself the fourth.
 
@@ -75,11 +78,32 @@ These are the filters of the inspection settings' own filter menu:
 
 These filter the problems themselves, one by one, rather than the inspections that report them:
 
+- **On lines changed since the last commit**: those on a line added or changed since.
+  See [what counts as a changed line](#what-counts-as-a-changed-line).
 - **With a quick fix only**: those that come with a fix.
 - **Message contains**: those whose message, as the results show it, contains the text, ignoring case.
   Leave it empty for any message.
 
-With both, a problem has to pass both.
+With more than one, a problem has to pass them all.
+
+#### What counts as a changed line
+
+The lines are those that differ from the last commit, as the gutter of the editor marks them:
+
+- A line added or changed counts, whether its change is staged or not.
+- A line only deleted does not: it is no longer there for a problem to be on.
+- A file added since the last commit counts as a whole.
+- A file the VCS does not track has no changed line, and neither has a file outside any VCS.
+
+A problem is on a changed line when the code it marks meets one.
+
+The lines are found anew as each run starts, **Rerun** included, so they are those of the code the run inspects.
+
+#### Caveat: only the reporting is narrowed, not what is inspected
+
+The inspections still run over the whole scope, so that global ones, such as **Unused declaration**, still see every
+use of what they report on.\
+Local inspections, which check one file at a time, skip the files with no changed line.
 
 #### Caveat: global inspections are filtered element by element
 
@@ -89,13 +113,14 @@ they are all reported when any one of them passes.
 
 Some of them, **Unused declaration** among them, also show elements they report no problem in: a class or a method
 nothing uses is shown with what the results say of it, but with no problem the filters could look at.\
-With either filter set, those elements are left out, even though **Safe delete** in the results would fix them.\
+With any of these filters set, those elements are left out, even though **Safe delete** in the results would fix them.\
 They are left out of an export of the results too.
 
 ### What is remembered
 
 - The choices are remembered per project.
 - **Rerun** in the results repeats the run with the filter it had, even when the choice has changed since.
+  Only the changed lines are found anew.
 
 ## Known issue in IntelliJ IDEA 2025.3: reporting only one of Grazie's two checks fails the run
 

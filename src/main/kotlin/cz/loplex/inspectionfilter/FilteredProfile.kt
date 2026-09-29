@@ -32,9 +32,9 @@ internal fun loadInspectionFilter(project: Project): InspectionFilter =
  * which runs over the whole scope rather than file by file, is not started for nothing. Its group and its properties,
  * on the other hand, are the inspection's own, so one that the filter leaves out by them is switched off as a whole.
  *
- * Of the inspections left on, the local ones are wrapped to report only the problems [InspectionFilter.problems]
- * accepts - see [wrapForProblemFilter]. The problems of the others are filtered by the run, which the profile cannot
- * do: [InspectCodeWithFiltersAction] sets it up.
+ * Of the inspections left on, the local ones are wrapped to report only the problems [problemFilter] accepts - see
+ * [wrapForProblemFilter]. The problems of the others are filtered by the run, which the profile cannot do:
+ * [InspectCodeWithFiltersAction] sets it up.
  *
  * The one exception is the Grazie runner in builds before 261, which follows its children instead - see
  * [grazieRunnerEnabled]. [baselineVersion] is the build's, and [baseProfile] the defaults an inspection is modified
@@ -50,6 +50,9 @@ internal class FilteredProfile(
     baselineVersion: Int = ApplicationInfo.getInstance().build.baselineVersion,
     baseProfile: InspectionProfileImpl = InspectionProfileImpl.BASE_PROFILE.get(),
 ) : InspectionProfileModifiableModel(source) {
+
+    /** [InspectionFilter.problems], as every run with this profile applies it. */
+    val problemFilter = RunProblemFilter(filter.problems)
 
     init {
         initInspectionTools(project)
@@ -87,7 +90,7 @@ internal class FilteredProfile(
             for (toolList in tools) {
                 if (toolList.isEnabled) {
                     for (state in toolList.tools) {
-                        state.setTool(wrapForProblemFilter(state.tool, filter.problems))
+                        state.setTool(wrapForProblemFilter(state.tool, problemFilter))
                     }
                 }
             }

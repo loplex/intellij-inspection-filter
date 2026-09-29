@@ -76,7 +76,7 @@ class FilteredRunOfBuiltInInspectionsTest : BasePlatformTestCase() {
         // With a filter that leaves nothing out, for which a filtered profile would not wrap them.
         for (tools in wrapped.tools) {
             for (state in tools.tools) {
-                state.setTool(wrapForProblemFilter(state.tool, ProblemFilter()))
+                state.setTool(wrapForProblemFilter(state.tool, RunProblemFilter(ProblemFilter())))
             }
         }
 
@@ -134,7 +134,7 @@ class FilteredRunOfBuiltInInspectionsTest : BasePlatformTestCase() {
                 val presentation = context.getPresentation(state.tool).apply { updateContent() }
                 presentation.content.values.flatten().map { it.name }
             }.sorted()
-        }, setUp = { filterProblems(it, filter) })
+        }, setUp = { filterProblems(it, filter?.let(::RunProblemFilter)) })
 
     /**
      * What an export of the results of a run filtered by [filter] holds of "Unused declaration" - see [exportedOf] -
@@ -148,7 +148,7 @@ class FilteredRunOfBuiltInInspectionsTest : BasePlatformTestCase() {
                 runAndWait(context, AnalysisScope(project))
             }
             exportedOf(context)
-        }, setUp = { filterProblems(it, filter) })
+        }, setUp = { filterProblems(it, filter?.let(::RunProblemFilter)) })
 
     /**
      * What an export of [context]'s results holds of "Unused declaration": each problem as the element it is about, and
