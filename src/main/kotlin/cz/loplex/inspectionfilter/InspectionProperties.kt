@@ -24,6 +24,10 @@ internal enum class InspectionProperty(val messageKey: String, val descriptionKe
 
     /** A global inspection with nothing to highlight in the editor, so that it is seen in "Inspect Code" only. */
     BATCH_ONLY("dialog.properties.batchOnly", "dialog.properties.batchOnly.description"),
+    ;
+
+    /** The name the summary gives it. */
+    val shortKey: String get() = "$messageKey.short"
 }
 
 /**

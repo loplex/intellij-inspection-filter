@@ -81,22 +81,28 @@ internal class InspectCodeWithFiltersAction : CodeInspectionAction() {
             if (profileSettings != null) {
                 row { cell(profileSettings).align(AlignX.FILL) }
             }
-            // Just above the severities, where it is seen, taking over the gap before them; and only where the bug is,
+            // Just above the filters, where it is seen, taking over the gap before them; and only where the bug is,
             // so as not to leave an empty row everywhere else.
             val hasGrazieWarningRow = grazieRunnerWorkaroundApplies(
                 InspectionProjectProfileManager.getInstance(project).currentProfile, project, baselineVersion)
             if (hasGrazieWarningRow) {
                 row { cell(grazieWarningCards) }.topGap(TopGap.MEDIUM)
             }
-            group(InspectionFilterBundle.message("dialog.severities.title")) {
-                row { cell(severityChooser.component).align(AlignX.FILL) }
+            group(InspectionFilterBundle.message("dialog.filters.title")) {
+                // One line each, so that the dialog keeps its height: it scrolls whatever grows after it opened.
+                row(InspectionFilterBundle.message("dialog.severities.label")) {
+                    cell(severityChooser.summary).resizableColumn()
+                    cell(severityChooser.button)
+                }
+                row(InspectionFilterBundle.message("dialog.groups.label")) {
+                    cell(groupChooser.summary).resizableColumn()
+                    cell(groupChooser.button)
+                }
+                row(InspectionFilterBundle.message("dialog.properties.label")) {
+                    cell(propertyChooser.summary).resizableColumn()
+                    cell(propertyChooser.button)
+                }
             }.apply { if (hasGrazieWarningRow) topGap(TopGap.NONE) }
-            group(InspectionFilterBundle.message("dialog.groups.title")) {
-                row { cell(groupChooser.component).align(AlignX.FILL) }
-            }
-            group(InspectionFilterBundle.message("dialog.properties.title")) {
-                row { cell(propertyChooser.component).align(AlignX.FILL) }
-            }
         }
     }
 

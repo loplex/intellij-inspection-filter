@@ -10,35 +10,37 @@ import com.intellij.openapi.actionSystem.ex.ActionUtil
 import com.intellij.openapi.actionSystem.impl.SimpleDataContext
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
+import com.intellij.openapi.ui.popup.JBPopup
 import com.intellij.ui.CollectionComboBoxModel
 import com.intellij.ui.SimpleListCellRenderer
+import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBRadioButton
 import com.intellij.ui.dsl.builder.RightGap
 import com.intellij.ui.dsl.builder.panel
+import com.intellij.util.ui.JBUI
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
-import java.awt.BorderLayout
 import javax.swing.Icon
+import javax.swing.JButton
 import javax.swing.JComponent
-import javax.swing.JPanel
-import javax.swing.JScrollPane
-import javax.swing.SwingUtilities
 
 /** Registered by the platform; its classes are internal, its ID is not. */
 private const val EDIT_SEVERITIES_ACTION_ID = "SeverityEditorDialog"
 
 /**
- * The dialog's choice of the severities to report: those ticked one by one, or one and every severity above it, in
- * which case the check boxes are disabled and show which that is.
+ * The dialog's choice of the severities to report: a [summary] of the choice, and a [button] that opens it - the
+ * severities ticked one by one, or one and every severity above it, in which case the check boxes are disabled and
+ * show which that is.
  *
  * Every change is stored at once (see SeveritySelection.kt), so that the choice survives the dialog, and so that the
  * whole of it can be built anew from what is stored after "Edit Severities…" has added, removed or reordered severities.
  */
 internal class SeverityChooser(private val project: Project) {
 
-    val component: JComponent = JPanel(BorderLayout()).apply { isOpaque = false }
+    val summary = JBLabel()
+    val button = JButton(InspectionFilterBundle.message("dialog.choose")).apply { addActionListener { showPopup() } }
 
     /** The names of the severities the choice currently reports. */
     var reportedSeverityNames: Set<String> = emptySet()
@@ -47,7 +49,7 @@ internal class SeverityChooser(private val project: Project) {
     private val changeListeners = mutableListOf<() -> Unit>()
 
     init {
-        rebuild()
+        changed()
     }
 
     /** Calls [listener] whenever [reportedSeverityNames] may have changed. */
@@ -55,11 +57,24 @@ internal class SeverityChooser(private val project: Project) {
         changeListeners += listener
     }
 
-    private fun rebuild() {
-        component.removeAll()
-        component.add(buildContent())
-        component.revalidate()
-        component.repaint()
+    private fun changed() {
+        reportedSeverityNames = loadReportedSeverityNames(project)
+        val (text, iconSeverity) = severitySummary(project)
+        summary.text = text.text
+        summary.toolTipText = text.tooltip
+        summary.icon = iconSeverity?.let(::severityIcon)
+        changeListeners.forEach { it() }
+    }
+
+    private fun showPopup() {
+        lateinit var popup: JBPopup
+        val edit = ActionLink(InspectionFilterBundle.message("dialog.severities.edit")) {
+            // A modal dialog would take the focus from the popup, and so close it anyway; opened again when done.
+            popup.cancel()
+            editSeverities()
+            showPopup()
+        }
+        popup = showChooserPopup(button, buildContent(), links = listOf(edit))
     }
 
     private fun buildContent(): JComponent {
@@ -92,13 +107,12 @@ internal class SeverityChooser(private val project: Project) {
         fun update() {
             val thisAndHigher = thisAndHigherMode.isSelected
             lowest.isEnabled = thisAndHigher
-            reportedSeverityNames = loadReportedSeverityNames(project)
+            changed()
             for ((name, checkBox) in checkBoxes) {
                 checkBox.isEnabled = !thisAndHigher
                 checkBox.isSelected = name in reportedSeverityNames
                 labels.getValue(name).isEnabled = !thisAndHigher
             }
-            changeListeners.forEach { it() }
         }
 
         selectedMode.addActionListener {
@@ -127,12 +141,13 @@ internal class SeverityChooser(private val project: Project) {
 
         return panel {
             // Unbound: the DSL only makes the two exclusive, the mode is stored by the listeners above.
+            // "Selected" last, just above the check boxes it goes with.
             buttonsGroup {
-                row { cell(selectedMode) }
                 row {
                     cell(thisAndHigherMode)
                     cell(lowest)
                 }
+                row { cell(selectedMode) }
             }
             indent {
                 for ((name, checkBox) in checkBoxes) {
@@ -142,10 +157,7 @@ internal class SeverityChooser(private val project: Project) {
                     }
                 }
             }
-            row {
-                link(InspectionFilterBundle.message("dialog.severities.edit")) { editSeverities() }
-            }
-        }.apply { isOpaque = false }
+        }.apply { border = JBUI.Borders.empty(8, 12) }
     }
 
     private fun editSeverities() {
@@ -154,27 +166,27 @@ internal class SeverityChooser(private val project: Project) {
                                               ActionPlaces.UNKNOWN, ActionUiKind.NONE, null)
         // The editor is a modal dialog, so it is closed by the time this returns.
         ActionUtil.performAction(action, event)
-        rebuild()
-        growDialogToFit(component)
+        changed()
     }
+}
+
+/**
+ * Sums up the severities a run reports in [project], as they were last chosen there, with the severity whose icon goes
+ * with the summary, if there is one.
+ */
+internal fun severitySummary(project: Project): Pair<Summary, HighlightSeverity?> {
+    val severities = availableSeverities(project)
+    val reported = loadReportedSeverityNames(project)
+    if (severities.all { it.name in reported }) {
+        return Summary(InspectionFilterBundle.message("dialog.severities.all")) to null
+    }
+    if (loadSeverityMode(project) == SeverityMode.THIS_AND_HIGHER) {
+        val lowest = severities.first { it.name == loadLowestSeverityName(project) }
+        return Summary(InspectionFilterBundle.message("dialog.severities.thisAndHigher", lowest.displayCapitalizedName)) to lowest
+    }
+    val chosen = severities.filter { it.name in reported }
+    return summaryOf(chosen.map { it.displayCapitalizedName }) to chosen.singleOrNull()
 }
 
 /** The icon the inspection settings show beside [severity], custom severities included. */
 private fun severityIcon(severity: HighlightSeverity): Icon? = HighlightDisplayLevel.find(severity)?.icon
-
-/**
- * Makes the dialog around [component] large enough for what it now holds, without ever shrinking it.
- *
- * The analysis dialog puts its content in a scroll pane whose preferred size it fixes when it opens
- * (`BaseAnalysisActionDialog.createCenterPanel`), so content that grows later only makes it scroll. A dialog built
- * otherwise is left as it is, and scrolls if it has to.
- */
-private fun growDialogToFit(component: JComponent) {
-    val scrollPane = SwingUtilities.getAncestorOfClass(JScrollPane::class.java, component) as? JScrollPane ?: return
-    val window = SwingUtilities.getWindowAncestor(component) ?: return
-    // Computed from what the pane shows again, rather than fixed.
-    scrollPane.preferredSize = null
-    val preferred = window.preferredSize
-    window.setSize(maxOf(preferred.width, window.width), maxOf(preferred.height, window.height))
-    window.validate()
-}

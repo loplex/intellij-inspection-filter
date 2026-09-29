@@ -1,11 +1,8 @@
 package cz.loplex.inspectionfilter
 
-import com.intellij.CommonBundle
 import com.intellij.codeInspection.ex.InspectionProfileImpl
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.ui.popup.JBPopupFactory
-import com.intellij.openapi.util.text.HtmlChunk
 import com.intellij.ui.CheckboxTree
 import com.intellij.ui.CheckboxTreeBase
 import com.intellij.ui.CheckboxTreeListener
@@ -15,24 +12,18 @@ import com.intellij.ui.ScrollPaneFactory
 import com.intellij.ui.SearchTextField
 import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.JBLabel
-import com.intellij.ui.dsl.builder.panel
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.tree.TreeUtil
 import java.awt.BorderLayout
-import java.awt.FlowLayout
 import javax.swing.JButton
-import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.JTree
 import javax.swing.event.DocumentEvent
 import javax.swing.tree.DefaultTreeModel
 
-/** How many groups the summary names before it says only how many more there are; the tooltip names them all. */
-private const val GROUPS_NAMED_IN_SUMMARY = 3
-
 /**
- * The dialog's choice of the groups of inspections to report: one line that sums the choice up, and a button that
- * opens the groups as a tree with a search field above it.
+ * The dialog's choice of the groups of inspections to report: a [summary] of the choice, and a [button] that opens the
+ * groups as a tree with a search field above it.
  *
  * A node stands for the inspections listed directly under its group, and ticking it ticks every group under it; a
  * group whose own inspections and subgroups differ shows as partly ticked. The choice itself is a [GroupSelection],
@@ -47,17 +38,9 @@ internal class GroupChooser(private val project: Project) {
     /** The groups on offer: those of the profile the run is to use. */
     private var roots: List<GroupNode> = emptyList()
 
-    private val summary = JBLabel()
+    val summary = JBLabel()
+    val button = JButton(InspectionFilterBundle.message("dialog.choose")).apply { addActionListener { showPopup() } }
     private val changeListeners = mutableListOf<() -> Unit>()
-
-    val component: JComponent = panel {
-        row {
-            cell(summary)
-            button(InspectionFilterBundle.message("dialog.groups.choose")) { event ->
-                showPopup(event.source as JButton)
-            }
-        }
-    }.apply { isOpaque = false }
 
     /** Calls [listener] whenever [selection] has changed. */
     fun addChangeListener(listener: () -> Unit) {
@@ -85,26 +68,14 @@ internal class GroupChooser(private val project: Project) {
             included.size < excluded.size -> "dialog.groups.only" to included
             else -> "dialog.groups.allExcept" to excluded
         }
-        val names = parts.map(::partName)
-        val named = names.take(GROUPS_NAMED_IN_SUMMARY).joinToString(", ")
-        val listed = if (names.size > GROUPS_NAMED_IN_SUMMARY) {
-            InspectionFilterBundle.message("dialog.groups.more", named, names.size - GROUPS_NAMED_IN_SUMMARY)
-        }
-        else {
-            named
-        }
-        summary.text = InspectionFilterBundle.message(key ?: "dialog.groups.all", listed)
+        val listed = summaryOf(parts.map(::partName))
+        summary.text = InspectionFilterBundle.message(key ?: "dialog.groups.all", listed.text)
         // Allowed, as "Uncheck All" and ticking one is the quick way to a single group, but a run would report nothing.
         summary.icon = if (roots.isEmpty() || selection.includesAny(roots)) null else AllIcons.General.Warning
-        summary.toolTipText = if (names.size > GROUPS_NAMED_IN_SUMMARY) {
-            HtmlChunk.html().children(names.flatMap { listOf(HtmlChunk.text(it), HtmlChunk.br()) }.dropLast(1)).toString()
-        }
-        else {
-            null
-        }
+        summary.toolTipText = listed.tooltip
     }
 
-    private fun showPopup(owner: JComponent) {
+    private fun showPopup() {
         val rootNode = CheckedTreeNode(null)
         val tree = CheckboxTree(GroupRenderer(), rootNode, CheckboxTreeBase.CheckPolicy(false, false, false, false)).apply {
             isRootVisible = false
@@ -157,10 +128,6 @@ internal class GroupChooser(private val project: Project) {
             .apply { icon = AllIcons.Actions.Selectall }
         val uncheckAll = ActionLink(InspectionFilterBundle.message("dialog.groups.uncheckAll")) { checkFound(false) }
             .apply { icon = AllIcons.Actions.Unselectall }
-        val ok = JButton(CommonBundle.getOkButtonText()).apply {
-            // As high as the links beside it rather than as a dialog's buttons; what the platform's own popups set.
-            putClientProperty("ActionToolbar.smallVariant", true)
-        }
         search.addDocumentListener(object : DocumentAdapter() {
             override fun textChanged(e: DocumentEvent) = showGroups()
         })
@@ -169,24 +136,8 @@ internal class GroupChooser(private val project: Project) {
         val content = JPanel(BorderLayout()).apply {
             add(search, BorderLayout.NORTH)
             add(ScrollPaneFactory.createScrollPane(tree).apply { preferredSize = JBUI.size(360, 400) }, BorderLayout.CENTER)
-            add(JPanel(BorderLayout()).apply {
-                border = JBUI.Borders.empty(4)
-                add(JPanel(FlowLayout(FlowLayout.LEADING, JBUI.scale(12), 0)).apply {
-                    add(checkAll)
-                    add(uncheckAll)
-                }, BorderLayout.WEST)
-                add(ok, BorderLayout.EAST)
-            }, BorderLayout.SOUTH)
         }
-        val popup = JBPopupFactory.getInstance().createComponentPopupBuilder(content, search.textEditor)
-            .setRequestFocus(true)
-            .setResizable(true)
-            .setMovable(true)
-            .setCancelOnClickOutside(true)
-            .createPopup()
-        // Only closes: every change has been applied, and stored, as it was made.
-        ok.addActionListener { popup.closeOk(null) }
-        popup.showUnderneathOf(owner)
+        showChooserPopup(button, content, search.textEditor, listOf(checkAll, uncheckAll))
     }
 }
 

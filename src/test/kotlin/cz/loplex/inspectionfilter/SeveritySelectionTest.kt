@@ -67,6 +67,49 @@ class SeveritySelectionTest : BasePlatformTestCase() {
         assertEquals(loadReportedSeverityNames(project), chooser.reportedSeverityNames)
     }
 
+    fun testTheSummaryNamesTheSeveritiesSelected() {
+        storeSelectedSeverityNames(project, listOf(HighlightSeverity.WARNING.name, HighlightSeverity.ERROR.name))
+
+        // In the order of the severities, whatever the order they were chosen in; no icon for more than one.
+        assertEquals(Summary("Error, Warning") to null, severitySummary(project))
+
+        storeSelectedSeverityNames(project, listOf(HighlightSeverity.WARNING.name))
+
+        assertEquals(Summary("Warning") to HighlightSeverity.WARNING, severitySummary(project))
+    }
+
+    fun testTheSummaryNamesOnlyTheFirstFewOfManySeverities() {
+        val severities = availableSeverities(project)
+        // All but the lowest, as all of them are summed up otherwise.
+        val chosen = severities.dropLast(1)
+        assertTrue(chosen.size > 3)
+        storeSelectedSeverityNames(project, chosen.map { it.name })
+
+        val (summary, _) = severitySummary(project)
+
+        assertEquals("${chosen.take(3).joinToString(", ") { it.displayCapitalizedName }} and ${chosen.size - 3} more", summary.text)
+        assertNotNull(summary.tooltip)
+    }
+
+    fun testTheSummaryOfThisAndHigherNamesTheLowest() {
+        storeSeverityMode(project, SeverityMode.THIS_AND_HIGHER)
+        storeLowestSeverityName(project, HighlightSeverity.WARNING.name)
+
+        assertEquals(Summary("Warning and higher") to HighlightSeverity.WARNING, severitySummary(project))
+    }
+
+    fun testTheSummarySaysAllWhenEverySeverityIsReported() {
+        val severities = availableSeverities(project)
+        storeSelectedSeverityNames(project, severities.map { it.name })
+
+        assertEquals(Summary("All severities") to null, severitySummary(project))
+
+        storeSeverityMode(project, SeverityMode.THIS_AND_HIGHER)
+        storeLowestSeverityName(project, severities.last().name)
+
+        assertEquals(Summary("All severities") to null, severitySummary(project))
+    }
+
     fun testALowestSeverityThatNoLongerExistsFallsBackToWarning() {
         storeLowestSeverityName(project, "A severity since removed")
 
