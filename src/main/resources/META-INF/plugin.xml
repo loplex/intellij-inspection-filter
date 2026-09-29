@@ -6,8 +6,9 @@
 
     <description><![CDATA[
         Adds <b>Code | Inspect Code with Filters…</b>, which runs inspections like <b>Inspect Code…</b> but reports
-        only problems of the severities and groups chosen in its dialog - errors and warnings, for instance, without
-        the weak warnings and typos around them, or everything but Proofreading.<br>
+        only problems of the severities, groups and kinds of inspections chosen in its dialog - errors and warnings,
+        for instance, without the weak warnings and typos around them, everything but Proofreading, or only what the
+        editor never shows.<br>
         Inspections left out are not run at all, so a filtered run is also a shorter one.
         ]]></description>
 

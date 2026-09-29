@@ -1,7 +1,11 @@
 package cz.loplex.inspectionfilter
 
 import com.intellij.codeHighlighting.HighlightDisplayLevel
+import com.intellij.codeInspection.CleanupLocalInspectionTool
+import com.intellij.codeInspection.GlobalInspectionTool
+import com.intellij.codeInspection.InspectionProfileEntry
 import com.intellij.codeInspection.LocalInspectionTool
+import com.intellij.codeInspection.ex.GlobalInspectionToolWrapper
 import com.intellij.codeInspection.ex.InspectionProfileImpl
 import com.intellij.codeInspection.ex.InspectionToolWrapper
 import com.intellij.codeInspection.ex.InspectionToolsSupplier
@@ -79,6 +83,50 @@ class FilteredProfileTest : BasePlatformTestCase() {
 
         assertEquals(emptyList<String>(), enabledToolNames(FilteredProfile(source, filter, project, BUGGY_BUILD)))
         assertFalse(filterBreaksGrazieRunner(source, source, filter, project, BUGGY_BUILD))
+    }
+
+    fun testOnlyCleanupInspectionsAreKeptWhenAsked() {
+        val source = profileOf(AnError(), ACleanupError())
+
+        val filtered = FilteredProfile(source, InspectionFilter(ERRORS, requiredProperties = setOf(InspectionProperty.CLEANUP)),
+                                       project)
+
+        assertEquals(listOf("ACleanupError"), enabledToolNames(filtered))
+    }
+
+    fun testOnlyInspectionsModifiedAgainstTheDefaultsAreKeptWhenAsked() {
+        val (source, defaults) = profileAndDefaultsOf(AnError(), AWarning())
+        source.getToolsOrNull("AWarning", project)!!.defaultState.level = HighlightDisplayLevel.ERROR
+
+        val filter = InspectionFilter(ERRORS, requiredProperties = setOf(InspectionProperty.MODIFIED))
+        val filtered = FilteredProfile(source, filter, project, baseProfile = defaults)
+
+        assertEquals(listOf("AWarning"), enabledToolNames(filtered))
+        assertTrue(source.getToolsOrNull("AWarning", project)!!.isKeptBy(filter, defaults))
+        assertFalse(source.getToolsOrNull("AnError", project)!!.isKeptBy(filter, defaults))
+    }
+
+    fun testOnlyBatchModeInspectionsAreKeptWhenAsked() {
+        val source = profileOf(AnError(), ABatchModeError())
+
+        val filtered = FilteredProfile(source, InspectionFilter(ERRORS, requiredProperties = setOf(InspectionProperty.BATCH_ONLY)),
+                                       project)
+
+        assertEquals(listOf("ABatchModeError"), enabledToolNames(filtered))
+    }
+
+    fun testBefore261TheGrazieRunnerFollowsItsChildrenWhateverItsOwnProperties() {
+        val (source, defaults) = profileAndDefaultsOf(GrazieInspectionRunner(), GrazieInspection(), GrazieStyle())
+        val grammar = source.getToolsOrNull("GrazieInspection", project)!!
+        grammar.defaultState.level = HighlightDisplayLevel.ERROR
+        val filter = InspectionFilter(setOf(HighlightSeverity.ERROR.name, HighlightSeverity.WARNING.name, severityOf(source, "GrazieStyle")),
+                                      requiredProperties = setOf(InspectionProperty.MODIFIED))
+
+        // The runner itself is not modified, and runs for the child that is.
+        assertEquals(listOf("GrazieInspection", "GrazieInspectionRunner"),
+                     enabledToolNames(FilteredProfile(source, filter, project, BUGGY_BUILD, defaults)))
+        // And reports under the other child too, which is left out.
+        assertTrue(filterBreaksGrazieRunner(source, source, filter, project, BUGGY_BUILD, defaults))
     }
 
     fun testBefore261TheGrazieRunnerIsSwitchedOffWithNoneOfItsChildren() {
@@ -166,11 +214,29 @@ class FilteredProfileTest : BasePlatformTestCase() {
     private fun severityOf(profile: InspectionProfileImpl, shortName: String): String =
         profile.getToolsOrNull(shortName, project)!!.level.severity.name
 
-    private fun profileOf(vararg inspections: LocalInspectionTool): InspectionProfileImpl {
-        val supplier = object : InspectionToolsSupplier() {
-            override fun createTools(): List<InspectionToolWrapper<*, *>> = inspections.map { LocalInspectionToolWrapper(it) }
+    private fun profileOf(vararg inspections: InspectionProfileEntry): InspectionProfileImpl =
+        newProfile("Source", supplierOf(*inspections), InspectionProfileImpl.BASE_PROFILE.get())
+
+    /** A profile of [inspections], and another of them as they are by default, for the first to be modified against. */
+    private fun profileAndDefaultsOf(vararg inspections: InspectionProfileEntry): Pair<InspectionProfileImpl, InspectionProfileImpl> {
+        val supplier = supplierOf(*inspections)
+        val defaults = newProfile("Defaults", supplier, InspectionProfileImpl.BASE_PROFILE.get())
+        return newProfile("Source", supplier, defaults) to defaults
+    }
+
+    private fun supplierOf(vararg inspections: InspectionProfileEntry) = object : InspectionToolsSupplier() {
+        override fun createTools(): List<InspectionToolWrapper<*, *>> = inspections.map {
+            when (it) {
+                is LocalInspectionTool -> LocalInspectionToolWrapper(it)
+                is GlobalInspectionTool -> GlobalInspectionToolWrapper(it)
+                else -> error("Neither local nor global: $it")
+            }
         }
-        val profile = InspectionProfileImpl("Source", supplier, InspectionProfileManager.getInstance() as BaseInspectionProfileManager)
+    }
+
+    private fun newProfile(name: String, supplier: InspectionToolsSupplier, base: InspectionProfileImpl): InspectionProfileImpl {
+        val profile = InspectionProfileImpl(name, supplier, InspectionProfileManager.getInstance() as BaseInspectionProfileManager,
+                                            base, null)
         profile.initInspectionTools(project)
         return profile
     }
@@ -196,6 +262,16 @@ class FilteredProfileTest : BasePlatformTestCase() {
     private class AWarning : TestInspection(HighlightDisplayLevel.WARNING)
     private class AWeakWarning : TestInspection(HighlightDisplayLevel.WEAK_WARNING)
     private class AnErrorOfAnotherGroup : TestInspection(HighlightDisplayLevel.ERROR, listOf("Other", "Subgroup"))
+    private class ACleanupError : TestInspection(HighlightDisplayLevel.ERROR), CleanupLocalInspectionTool
+
+    // Global, and with no local inspection to highlight with in the editor, so it runs in batch mode only.
+    private class ABatchModeError : GlobalInspectionTool() {
+        override fun getShortName(): String = javaClass.simpleName
+        override fun getDisplayName(): String = shortName
+        override fun getGroupDisplayName(): String = "Test"
+        override fun getDefaultLevel(): HighlightDisplayLevel = HighlightDisplayLevel.ERROR
+        override fun isEnabledByDefault(): Boolean = true
+    }
 
     // Named as Grazie names them. A wrapper takes the level and group registered under its inspection's name, so where
     // Grazie is loaded, as it is in the IDE the tests run in, these get Grazie's own; the tests therefore read the
@@ -205,6 +281,7 @@ class FilteredProfileTest : BasePlatformTestCase() {
     private class GrazieStyle : TestInspection(HighlightDisplayLevel.WEAK_WARNING)
 
     private companion object {
+        val ERRORS = setOf(HighlightSeverity.ERROR.name)
         const val BUGGY_BUILD = 253
         const val FIXED_BUILD = 261
     }

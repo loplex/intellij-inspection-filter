@@ -23,7 +23,7 @@ private const val GRAZIE_WARNING_SHOWN = "shown"
 private const val GRAZIE_WARNING_HIDDEN = "hidden"
 
 /**
- * "Inspect Code", with a choice of the severities and groups of inspections to report.
+ * "Inspect Code", with a choice of the severities, groups and kinds of inspections to report.
  *
  * The dialog is the one "Inspect Code" shows, with the choice added under the profile. The inspections are then run
  * with a copy of the chosen profile in which all the others are switched off - see [FilteredProfile] - so the results
@@ -38,6 +38,7 @@ internal class InspectCodeWithFiltersAction : CodeInspectionAction() {
         val profilesCombo = profileSettings?.let { UIUtil.findComponentOfType(it, SchemesCombo::class.java) }
         val severityChooser = SeverityChooser(project)
         val groupChooser = GroupChooser(project)
+        val propertyChooser = PropertyChooser(project)
         val baselineVersion = ApplicationInfo.getInstance().build.baselineVersion
         val grazieWarning = JBLabel(InspectionFilterBundle.message("dialog.grazie.warning.text"), AllIcons.General.Warning,
                                     JBLabel.LEADING)
@@ -56,7 +57,8 @@ internal class InspectCodeWithFiltersAction : CodeInspectionAction() {
 
         fun updateGrazieWarning() {
             val profile = selectedProfile()
-            val filter = InspectionFilter(severityChooser.reportedSeverityNames, groupChooser.selection)
+            val filter = InspectionFilter(severityChooser.reportedSeverityNames, groupChooser.selection,
+                                          propertyChooser.requiredProperties)
             val shown = filterBreaksGrazieRunner(profile, InspectionProjectProfileManager.getInstance(project).currentProfile,
                                                  filter, project, baselineVersion)
             if (shown) {
@@ -67,6 +69,7 @@ internal class InspectCodeWithFiltersAction : CodeInspectionAction() {
 
         severityChooser.addChangeListener { updateGrazieWarning() }
         groupChooser.addChangeListener { updateGrazieWarning() }
+        propertyChooser.addChangeListener { updateGrazieWarning() }
         profilesCombo?.addActionListener {
             groupChooser.setProfile(selectedProfile())
             updateGrazieWarning()
@@ -90,6 +93,9 @@ internal class InspectCodeWithFiltersAction : CodeInspectionAction() {
             }.apply { if (hasGrazieWarningRow) topGap(TopGap.NONE) }
             group(InspectionFilterBundle.message("dialog.groups.title")) {
                 row { cell(groupChooser.component).align(AlignX.FILL) }
+            }
+            group(InspectionFilterBundle.message("dialog.properties.title")) {
+                row { cell(propertyChooser.component).align(AlignX.FILL) }
             }
         }
     }

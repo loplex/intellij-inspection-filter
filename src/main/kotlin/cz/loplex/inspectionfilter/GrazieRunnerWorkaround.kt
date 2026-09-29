@@ -40,7 +40,8 @@ internal fun grazieRunnerWorkaroundApplies(profile: InspectionProfileImpl, proje
 
 /**
  * Whether the Grazie runner is to be on in a copy of [profile] filtered by [filter]: when any of its children is, and
- * its own group is included. A runner switched off in [profile] stays off.
+ * its own group is included. Its own severity and properties are not asked, as it reports nothing of its own. A runner
+ * switched off in [profile] stays off.
  *
  * Null where the runner is left to the filter like any other inspection: from build 261 on, or with Grazie not in
  * [profile].
@@ -50,11 +51,12 @@ internal fun grazieRunnerEnabled(
     filter: InspectionFilter,
     project: Project,
     baselineVersion: Int,
+    baseProfile: InspectionProfileImpl = InspectionProfileImpl.BASE_PROFILE.get(),
 ): Boolean? {
     if (!grazieRunnerWorkaroundApplies(profile, project, baselineVersion)) return null
     val runner = profile.getToolsOrNull(GRAZIE_RUNNER, project)!!
     return runner.isEnabled && filter.groups.includes(runner.groupPath) &&
-           GRAZIE_RUNNER_CHILDREN.any { profile.getToolsOrNull(it, project)?.isKeptBy(filter) == true }
+           GRAZIE_RUNNER_CHILDREN.any { profile.getToolsOrNull(it, project)?.isKeptBy(filter, baseProfile) == true }
 }
 
 /**
@@ -68,11 +70,12 @@ internal fun filterBreaksGrazieRunner(
     filter: InspectionFilter,
     project: Project,
     baselineVersion: Int,
+    baseProfile: InspectionProfileImpl = InspectionProfileImpl.BASE_PROFILE.get(),
 ): Boolean {
-    if (grazieRunnerEnabled(profile, filter, project, baselineVersion) != true) return false
+    if (grazieRunnerEnabled(profile, filter, project, baselineVersion, baseProfile) != true) return false
     return GRAZIE_RUNNER_CHILDREN.any { child ->
         projectProfile.getToolsOrNull(child, project)?.isEnabled == true &&
-        profile.getToolsOrNull(child, project)?.isKeptBy(filter) != true
+        profile.getToolsOrNull(child, project)?.isKeptBy(filter, baseProfile) != true
     }
 }
 
