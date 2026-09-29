@@ -97,9 +97,11 @@ class SeverityFilteredProfileTest : BasePlatformTestCase() {
         val source = profileOf(GrazieInspectionRunner(), GrazieInspection(), GrazieStyle())
         source.getToolsOrNull(GRAZIE_RUNNER, project)!!.isEnabled = false
 
-        val filtered = SeverityFilteredProfile(source, setOf(severityOf(source, "GrazieInspection")), project, BUGGY_BUILD)
+        val grammar = severityOf(source, "GrazieInspection")
 
-        assertEquals(listOf("GrazieInspection"), enabledToolNames(filtered))
+        assertEquals(listOf("GrazieInspection"),
+                     enabledToolNames(SeverityFilteredProfile(source, setOf(grammar), project, BUGGY_BUILD)))
+        assertFalse(breaksGrazieRunner(source, source, grammar, build = BUGGY_BUILD))
     }
 
     fun testFrom261TheGrazieRunnerIsFilteredBySeverityLikeAnyOther() {
@@ -112,12 +114,48 @@ class SeverityFilteredProfileTest : BasePlatformTestCase() {
                      enabledToolNames(SeverityFilteredProfile(source, setOf(HighlightSeverity.WARNING.name), project, FIXED_BUILD)))
     }
 
+    fun testBefore261ChoosingOneGrazieChildWithoutTheOtherBreaksTheRun() {
+        val source = profileOf(GrazieInspectionRunner(), GrazieInspection(), GrazieStyle())
+
+        val grammar = severityOf(source, "GrazieInspection")
+        val style = severityOf(source, "GrazieStyle")
+
+        assertTrue(breaksGrazieRunner(source, source, grammar, build = BUGGY_BUILD))
+        assertFalse(breaksGrazieRunner(source, source, grammar, style, build = BUGGY_BUILD))
+        // Neither child: the runner does not run.
+        assertFalse(breaksGrazieRunner(source, source, HighlightSeverity.WARNING.name, build = BUGGY_BUILD))
+        assertFalse(breaksGrazieRunner(source, source, grammar, build = FIXED_BUILD))
+    }
+
+    fun testWhetherTheGrazieRunnerBreaksTheRunIsDecidedByTheProjectProfile() {
+        val chosen = profileOf(GrazieInspectionRunner(), GrazieInspection(), GrazieStyle())
+        val projectProfile = profileOf(GrazieInspectionRunner(), GrazieInspection(), GrazieStyle())
+        val grammar = severityOf(chosen, "GrazieInspection")
+
+        // The runner reports only under the children that are on in the project's profile.
+        projectProfile.getToolsOrNull("GrazieStyle", project)!!.isEnabled = false
+        assertFalse(breaksGrazieRunner(chosen, projectProfile, grammar, build = BUGGY_BUILD))
+
+        // And under those whatever the chosen profile says.
+        chosen.getToolsOrNull("GrazieStyle", project)!!.isEnabled = false
+        projectProfile.getToolsOrNull("GrazieStyle", project)!!.isEnabled = true
+        assertTrue(breaksGrazieRunner(chosen, projectProfile, grammar, build = BUGGY_BUILD))
+    }
+
     fun testWithoutGrazieTheWorkaroundDoesNothing() {
         val source = profileOf(AnError(), AWarning())
 
         assertEquals(listOf("AnError"),
                      enabledToolNames(SeverityFilteredProfile(source, setOf(HighlightSeverity.ERROR.name), project, BUGGY_BUILD)))
+        assertFalse(breaksGrazieRunner(source, source, HighlightSeverity.ERROR.name, build = BUGGY_BUILD))
     }
+
+    private fun breaksGrazieRunner(
+        profile: InspectionProfileImpl,
+        projectProfile: InspectionProfileImpl,
+        vararg severityNames: String,
+        build: Int,
+    ): Boolean = filterBreaksGrazieRunner(profile, projectProfile, severityNames.toSet(), project, build)
 
     private fun severityOf(profile: InspectionProfileImpl, shortName: String): String =
         profile.getToolsOrNull(shortName, project)!!.level.severity.name
