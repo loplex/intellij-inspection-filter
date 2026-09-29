@@ -8,17 +8,19 @@ import com.intellij.openapi.project.Project
 
 /**
  * What a filtered run reports: problems of inspections of [severityNames], in the groups [groups] includes, and with
- * every property in [requiredProperties].
+ * every property in [requiredProperties]; and of those, the ones [problems] accepts.
  */
 internal data class InspectionFilter(
     val severityNames: Set<String>,
     val groups: GroupSelection = GroupSelection(),
     val requiredProperties: Set<InspectionProperty> = emptySet(),
+    val problems: ProblemFilter = ProblemFilter(),
 )
 
 /** The filter last chosen in [project]. */
 internal fun loadInspectionFilter(project: Project): InspectionFilter =
-    InspectionFilter(loadReportedSeverityNames(project), loadGroupSelection(project), loadRequiredProperties(project))
+    InspectionFilter(loadReportedSeverityNames(project), loadGroupSelection(project), loadRequiredProperties(project),
+                     loadProblemFilter(project))
 
 /**
  * A copy of [source] in which every inspection that [filter] leaves out is switched off, so that a run with it neither
@@ -29,6 +31,10 @@ internal fun loadInspectionFilter(project: Project): InspectionFilter =
  * is one of those wanted. One left with no state switched on is switched off as a whole, so that a global inspection,
  * which runs over the whole scope rather than file by file, is not started for nothing. Its group and its properties,
  * on the other hand, are the inspection's own, so one that the filter leaves out by them is switched off as a whole.
+ *
+ * Of the inspections left on, the local ones are wrapped to report only the problems [InspectionFilter.problems]
+ * accepts - see [wrapForProblemFilter]. The problems of the others are filtered by the run, which the profile cannot
+ * do: [InspectCodeWithFiltersAction] sets it up.
  *
  * The one exception is the Grazie runner in builds before 261, which follows its children instead - see
  * [grazieRunnerEnabled]. [baselineVersion] is the build's, and [baseProfile] the defaults an inspection is modified
@@ -74,6 +80,16 @@ internal class FilteredProfile(
             }
             if (states.none { it.isEnabled }) {
                 toolList.isEnabled = false
+            }
+        }
+        // Only when it leaves anything out, so that a run with no such filter runs the inspections as they are.
+        if (filter.problems.isActive) {
+            for (toolList in tools) {
+                if (toolList.isEnabled) {
+                    for (state in toolList.tools) {
+                        state.setTool(wrapForProblemFilter(state.tool, filter.problems))
+                    }
+                }
             }
         }
     }

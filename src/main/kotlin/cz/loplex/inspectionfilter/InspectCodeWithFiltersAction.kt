@@ -28,7 +28,7 @@ private const val GRAZIE_WARNING_SHOWN = "shown"
 private const val GRAZIE_WARNING_HIDDEN = "hidden"
 
 /**
- * "Inspect Code", with a choice of the severities, groups and kinds of inspections to report.
+ * "Inspect Code", with a choice of the severities, groups and kinds of inspections to report, and of their problems.
  *
  * The dialog is the one "Inspect Code" shows, with the choice added under the profile. The inspections are then run
  * with a copy of the chosen profile in which all the others are switched off - see [FilteredProfile] - so the results
@@ -50,6 +50,7 @@ internal class InspectCodeWithFiltersAction : CodeInspectionAction() {
         val severityChooser = SeverityChooser(project)
         val groupChooser = GroupChooser(project)
         val propertyChooser = PropertyChooser(project)
+        val problemChooser = ProblemChooser(project)
         val baselineVersion = ApplicationInfo.getInstance().build.baselineVersion
         val grazieWarning = JBLabel(InspectionFilterBundle.message("dialog.grazie.warning.text"), AllIcons.General.Warning,
                                     JBLabel.LEADING)
@@ -113,6 +114,10 @@ internal class InspectCodeWithFiltersAction : CodeInspectionAction() {
                     cell(propertyChooser.summary).resizableColumn()
                     cell(propertyChooser.button)
                 }
+                row(InspectionFilterBundle.message("dialog.problems.label")) {
+                    cell(problemChooser.summary).resizableColumn()
+                    cell(problemChooser.button)
+                }
             }.apply { if (hasGrazieWarningRow) topGap(TopGap.NONE) }
         }
     }
@@ -141,6 +146,7 @@ internal class InspectCodeWithFiltersAction : CodeInspectionAction() {
     /**
      * What [CodeInspectionAction.runInspections] does, step for step, but in a context this action holds itself, so
      * that it can set the context up before the run starts: the one the platform's action holds is private to it.
+     * What it sets up is the filter of the problems that the profile cannot filter - see [filterProblems].
      */
     private fun runInspectionsInOwnContext(project: Project, scope: AnalysisScope) {
         val runId = ++lastRunId
@@ -163,6 +169,7 @@ internal class InspectCodeWithFiltersAction : CodeInspectionAction() {
             }
         }
         context.setExternalProfile(externalProfile)
+        filterProblems(context, (externalProfile as? FilteredProfile)?.filter?.problems)
         context.setCurrentScope(scope)
         context.doInspections(scope)
     }

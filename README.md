@@ -4,11 +4,13 @@
 
 An IntelliJ Platform plugin that adds **Inspect Code with Filters…** next to **Inspect Code…**.\
 It runs the same inspections over the same scope, but reports only those of the severities, groups and kinds of
-inspection chosen in its dialog. For example:
+inspection chosen in its dialog, and of their problems only those with a quick fix or a given text, if asked.
+For example:
 
 - errors and warnings, without the weak warnings and typos around them;
 - everything but Proofreading;
-- only the batch-mode inspections, which the editor never shows.
+- only the batch-mode inspections, which the editor never shows;
+- only the problems whose message mentions `Optional`.
 
 The inspections left out are not run at all, so a filtered run is also a shorter one.\
 The profile itself is not changed: the run uses a copy of it with the other inspections switched off.
@@ -28,13 +30,14 @@ In IntelliJ IDEA it is under **Analyze** there, beside **Inspect Code…**.
 The dialog is the one **Inspect Code…** shows, with a **Report Only** group added under the inspection profile.\
 Each row sums up one filter; **Choose…** opens it.
 
-| Row         | Reports only the inspections                                  |
-|-------------|---------------------------------------------------------------|
-| Severities  | of the severities chosen                                      |
-| Groups      | in the groups chosen                                          |
-| Inspections | that are cleanup, modified or batch-mode ones, as chosen      |
+| Row         | Reports only                                                     |
+|-------------|------------------------------------------------------------------|
+| Severities  | the inspections of the severities chosen                         |
+| Groups      | the inspections in the groups chosen                             |
+| Inspections | the inspections that are cleanup, modified or batch-mode ones    |
+| Problems    | the problems with a quick fix, or with a text in their message   |
 
-A problem is reported only when its inspection passes all three.
+A problem is reported only when its inspection passes the first three rows, and the problem itself the fourth.
 
 ### Severities
 
@@ -67,6 +70,27 @@ These are the filters of the inspection settings' own filter menu:
 - **Modified in the profile only**: those whose settings differ from the defaults: switched on or off, severity,
   scopes or options.
 - **Batch-mode inspections only**: those that run only in **Inspect Code**, and never highlight code in the editor.
+
+### Problems
+
+These filter the problems themselves, one by one, rather than the inspections that report them:
+
+- **With a quick fix only**: those that come with a fix.
+- **Message contains**: those whose message, as the results show it, contains the text, ignoring case.
+  Leave it empty for any message.
+
+With both, a problem has to pass both.
+
+#### Caveat: global inspections are filtered element by element
+
+A global inspection, such as **Unused declaration**, runs over the whole scope at once rather than file by file.\
+Its problems are filtered for each element it reports them in (a class, a method, a file), all of them at once:
+they are all reported when any one of them passes.
+
+Some of them, **Unused declaration** among them, also show elements they report no problem in: a class or a method
+nothing uses is shown with what the results say of it, but with no problem the filters could look at.\
+With either filter set, those elements are left out, even though **Safe delete** in the results would fix them.\
+They are left out of an export of the results too.
 
 ### What is remembered
 

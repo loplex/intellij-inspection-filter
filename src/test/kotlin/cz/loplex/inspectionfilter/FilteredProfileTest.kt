@@ -5,7 +5,9 @@ import com.intellij.codeInspection.CleanupLocalInspectionTool
 import com.intellij.codeInspection.GlobalInspectionTool
 import com.intellij.codeInspection.InspectionProfileEntry
 import com.intellij.codeInspection.LocalInspectionTool
+import com.intellij.codeInspection.ex.ExternalAnnotatorBatchInspection
 import com.intellij.codeInspection.ex.InspectionProfileImpl
+import com.intellij.codeInspection.ex.PairedUnfairLocalInspectionTool
 import com.intellij.lang.annotation.HighlightSeverity
 import com.intellij.psi.search.scope.TestsScope
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
@@ -198,6 +200,43 @@ class FilteredProfileTest : BasePlatformTestCase() {
         assertFalse(breaksGrazieRunner(source, source, HighlightSeverity.ERROR.name, build = BUGGY_BUILD))
     }
 
+    fun testWithNoFilterOfProblemsNoInspectionIsWrapped() {
+        val filtered = FilteredProfile(profileOf(AnError(), AnExternalError(), APairedUnfairError(), ABatchModeError()), InspectionFilter(ERRORS),
+                                       project)
+
+        assertEquals(mapOf("ABatchModeError" to listOf(false), "APairedUnfairError" to listOf(false), "AnError" to listOf(false),
+                           "AnExternalError" to listOf(false)), wrappedByScope(filtered))
+    }
+
+    fun testWithAFilterOfProblemsLocalInspectionsAreWrappedInEveryScope() {
+        val source = profileOf(AnError(), AnExternalError(), APairedUnfairError(), ABatchModeError())
+        source.addScope(source.getInspectionTool(AnError().shortName, project)!!, TestsScope.INSTANCE, HighlightDisplayLevel.ERROR, true, project)
+
+        val filtered = FilteredProfile(source, InspectionFilter(ERRORS, problems = ProblemFilter(withQuickFix = true)), project)
+
+        // A paired one runs in batch mode as the global one it names, which the run finds by the type of its tool.
+        assertEquals(mapOf("ABatchModeError" to listOf(false), "APairedUnfairError" to listOf(false), "AnError" to listOf(true, true),
+                           "AnExternalError" to listOf(true)), wrappedByScope(filtered))
+    }
+
+    fun testAWrappedInspectionKeepsWhatTheRunKnowsItBy() {
+        val source = profileOf(AnError(), AnExternalError())
+
+        val filtered = FilteredProfile(source, InspectionFilter(ERRORS, problems = ProblemFilter(withQuickFix = true)), project)
+
+        for (shortName in listOf(AnError().shortName, AnExternalError().shortName)) {
+            val original = source.getInspectionTool(shortName, project)!!
+            val wrapped = filtered.getInspectionTool(shortName, project)!!
+            for (wrapper in listOf(wrapped, wrapped.createCopy())) {
+                assertNotSame(original.tool.javaClass, wrapper.tool.javaClass)
+                assertEquals(original.shortName, wrapper.shortName)
+                assertEquals(original.displayName, wrapper.displayName)
+                assertEquals(original.groupPath.toList(), wrapper.groupPath.toList())
+                assertEquals(original.tool is ExternalAnnotatorBatchInspection, wrapper.tool is ExternalAnnotatorBatchInspection)
+            }
+        }
+    }
+
     private fun breaksGrazieRunner(
         profile: InspectionProfileImpl,
         projectProfile: InspectionProfileImpl,
@@ -221,6 +260,12 @@ class FilteredProfileTest : BasePlatformTestCase() {
     private fun enabledToolNames(profile: InspectionProfileImpl): List<String> =
         profile.getAllEnabledInspectionTools(project).map { it.tool.shortName }.sorted()
 
+    /** For each inspection switched on in [profile], whether the tool of each of its scopes is wrapped. */
+    private fun wrappedByScope(profile: InspectionProfileImpl): Map<String, List<Boolean>> =
+        profile.tools.filter { it.isEnabled }.associate { tools ->
+            tools.shortName to tools.tools.map { it.tool.tool.javaClass.enclosingClass != FilteredProfileTest::class.java }
+        }
+
     // One class per inspection, each with a constructor taking nothing: copying a profile copies its inspections by
     // instantiating their classes anew, the way the platform instantiates those registered in plugin.xml.
     private abstract class TestInspection(
@@ -240,6 +285,12 @@ class FilteredProfileTest : BasePlatformTestCase() {
     private class AWeakWarning : TestInspection(HighlightDisplayLevel.WEAK_WARNING)
     private class AnErrorOfAnotherGroup : TestInspection(HighlightDisplayLevel.ERROR, listOf("Other", "Subgroup"))
     private class ACleanupError : TestInspection(HighlightDisplayLevel.ERROR), CleanupLocalInspectionTool
+
+    private class AnExternalError : TestInspection(HighlightDisplayLevel.ERROR), ExternalAnnotatorBatchInspection
+
+    private class APairedUnfairError : TestInspection(HighlightDisplayLevel.ERROR), PairedUnfairLocalInspectionTool {
+        override fun getInspectionForBatchShortName(): String = "ABatchModeError"
+    }
 
     // Global, and with no local inspection to highlight with in the editor, so it runs in batch mode only.
     private class ABatchModeError : GlobalInspectionTool() {

@@ -11,15 +11,12 @@ import com.intellij.codeInspection.LocalInspectionTool
 import com.intellij.codeInspection.ProblemDescriptionsProcessor
 import com.intellij.codeInspection.ProblemDescriptor
 import com.intellij.codeInspection.ProblemsHolder
-import com.intellij.codeInspection.actions.CodeInspectionAction
 import com.intellij.codeInspection.ex.GlobalInspectionContextImpl
 import com.intellij.codeInspection.ex.InspectionManagerEx
 import com.intellij.codeInspection.ex.InspectionProfileImpl
 import com.intellij.lang.annotation.HighlightSeverity
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.profile.codeInspection.ProjectInspectionProfileManager
 import com.intellij.psi.PsiElementVisitor
 import com.intellij.psi.PsiFile
 import com.intellij.psi.search.scope.packageSet.NamedScope
@@ -27,8 +24,6 @@ import com.intellij.psi.search.scope.packageSet.NamedScopeManager
 import com.intellij.psi.search.scope.packageSet.NamedScopesHolder
 import com.intellij.psi.search.scope.packageSet.PackageSetBase
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
-import com.intellij.util.ui.UIUtil
-import java.lang.reflect.InvocationTargetException
 import kotlin.reflect.KClass
 
 /**
@@ -117,7 +112,7 @@ class FilteredRunTest : BasePlatformTestCase() {
     }
 
     fun testTheActionRunsWithTheFilterStoredAndItsRerunsKeepIt() {
-        useAsProjectProfile(sourceProfile())
+        useAsProjectProfile(project, sourceProfile(), testRootDisposable)
         storeSelectedSeverityNames(project, ERRORS)
         storeRequiredProperties(project, setOf(InspectionProperty.CLEANUP))
         val action = InspectCodeWithFiltersAction()
@@ -125,7 +120,7 @@ class FilteredRunTest : BasePlatformTestCase() {
         val contexts = (InspectionManager.getInstance(project) as InspectionManagerEx).runningContexts
         val contextsBefore = contexts.toSet()
 
-        runAction(action, scope)
+        runAction(action, project, scope)
         val context = (contexts - contextsBefore).single()
         assertEquals(findingsOf(ACleanupError::class), findingsOf(context))
 
@@ -138,7 +133,7 @@ class FilteredRunTest : BasePlatformTestCase() {
         runAndWait(context, scope)
         assertEquals(findingsOf(ACleanupError::class), findingsOf(context))
         // A run repeated after the JDK was chosen comes back to the action with the profile of the run it repeats.
-        runAction(action, scope)
+        runAction(action, project, scope)
         assertEquals(findingsOf(ACleanupError::class), findingsOf(context))
     }
 
@@ -148,33 +143,8 @@ class FilteredRunTest : BasePlatformTestCase() {
     private fun inspections(): Array<InspectionProfileEntry> =
         arrayOf(AnError(), AWarning(), AWeakWarning(), AnErrorOfAnotherGroup(), ACleanupError(), ABatchModeError())
 
-    /** Makes [profile] the project's for the rest of the test, as the action runs with it when no other is chosen. */
-    private fun useAsProjectProfile(profile: InspectionProfileImpl) {
-        val manager = ProjectInspectionProfileManager.getInstance(project)
-        val previous = manager.currentProfile
-        manager.addProfile(profile)
-        manager.setCurrentProfile(profile)
-        Disposer.register(testRootDisposable) {
-            manager.setCurrentProfile(previous)
-            manager.deleteProfile(profile)
-        }
-    }
-
     /** What a run with [profile] over the whole project reports. */
     private fun run(profile: InspectionProfileImpl): List<String> = runInspections(project, profile, ::findingsOf)
-
-    /** Calls the action's own entry point, which it reaches from its dialog. */
-    private fun runAction(action: CodeInspectionAction, scope: AnalysisScope) {
-        val method = CodeInspectionAction::class.java.getDeclaredMethod("runInspections", Project::class.java, AnalysisScope::class.java)
-        method.isAccessible = true
-        try {
-            method.invoke(action, project, scope)
-        }
-        catch (e: InvocationTargetException) {
-            throw e.targetException
-        }
-        UIUtil.dispatchAllInvocationEvents()
-    }
 
     /** The findings of [context]'s last run, as "inspection in file", sorted. */
     private fun findingsOf(context: GlobalInspectionContextImpl): List<String> =

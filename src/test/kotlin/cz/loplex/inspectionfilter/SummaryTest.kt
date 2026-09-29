@@ -25,4 +25,14 @@ class SummaryTest : BasePlatformTestCase() {
         assertEquals("Cleanup, batch-mode only", summary.text)
         assertNotNull(summary.tooltip)
     }
+
+    fun testNoFilterOfProblemsMeansAllProblems() {
+        assertEquals("All problems", problemSummary(ProblemFilter(messageContains = " ")))
+    }
+
+    fun testTheConditionsOnAProblemAreNamedTogether() {
+        assertEquals("With a quick fix", problemSummary(ProblemFilter(withQuickFix = true)))
+        assertEquals("Message contains \u201Capple\u201D", problemSummary(ProblemFilter(messageContains = "apple")))
+        assertEquals("With a quick fix, message contains \u201Capple\u201D", problemSummary(ProblemFilter(true, "apple")))
+    }
 }
