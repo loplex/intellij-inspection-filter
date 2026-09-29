@@ -29,7 +29,7 @@ private const val GRAZIE_WARNING_HIDDEN = "hidden"
  * run with a copy of the chosen profile in which those of any other severity are switched off - see
  * [SeverityFilteredProfile] - so the results hold nothing else, and "Rerun" in the results keeps the same filter.
  */
-internal class InspectCodeBySeverityAction : CodeInspectionAction() {
+internal class InspectCodeWithFiltersAction : CodeInspectionAction() {
 
     override fun getAdditionalActionSettings(project: Project, dialog: BaseAnalysisActionDialog): JComponent {
         val profileSettings = super.getAdditionalActionSettings(project, dialog)
