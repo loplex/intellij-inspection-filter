@@ -139,6 +139,52 @@ class FilterPopupUiTest {
         summary("Cleanup").shouldBe { present() }
     }
 
+    @Test
+    fun enterOnACheckBoxClosesThePopupAndKeepsTheChange() = inDialog {
+        open(Row.PROPERTIES)
+        checkBox { byVisibleText("Cleanup inspections only") }.click()
+        summary("Cleanup").shouldBe { present() }
+        keyboard { enter() }
+        checkBox { byVisibleText("Cleanup inspections only") }.shouldBe { notPresent() }
+        // Not the dialog's Analyze, which closes it.
+        summary("Cleanup").shouldBe { present() }
+    }
+
+    @Test
+    fun enterInTheFieldOfTheMessageClosesThePopupAndKeepsTheText() = inDialog {
+        // The popup opens with the focus in the field.
+        open(Row.PROBLEMS)
+        keyboard { typeText("abc") }
+        summary("Message contains “abc”").shouldBe { present() }
+        keyboard { enter() }
+        checkBox { byVisibleText("With a quick fix only") }.shouldBe { notPresent() }
+        summary("Message contains “abc”").shouldBe { present() }
+    }
+
+    @Test
+    fun enterInTheSearchOfGroupsClosesThePopup() = inDialog {
+        // The popup opens with the focus in the search.
+        open(Row.GROUPS)
+        keyboard { typeText("Java") }
+        keyboard { enter() }
+        x { byVisibleText("Uncheck All") }.shouldBe { notPresent() }
+        summary("All groups").shouldBe { present() }
+    }
+
+    @Test
+    fun enterOnALinkPressesIt() = inDialog {
+        open(Row.GROUPS)
+        x { byVisibleText("Uncheck All") }.click()
+        summary("No group: nothing will be reported").shouldBe { present() }
+        val revert = x { byVisibleText("Revert") }
+        revert.setFocus()
+        revert.shouldBe { isFocusOwner() }
+        keyboard { enter() }
+        summary("All groups").shouldBe { present() }
+        x { byVisibleText("Uncheck All") }.shouldBe { present() }
+        keyboard { escape() }
+    }
+
     /**
      * Opens the dialog of the action, does [action] in it, and then closes it: with Esc, which closes a popup [action]
      * has left open first, and so does not press its Analyze by mistake.

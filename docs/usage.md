@@ -17,7 +17,7 @@ A problem is reported only when its inspection passes the first three rows, and 
 
 A change in a popup applies as it is made:
 
-- **OK**, or a click outside the popup, closes it and keeps the changes.
+- **OK**, **Enter**, or a click outside the popup, closes it and keeps the changes.
 - **Esc** closes it and goes back to what was chosen when it opened.
 
 After the filters:
