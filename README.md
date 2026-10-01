@@ -21,7 +21,8 @@ The profile itself is not changed: the run uses a copy of it with the other insp
 - [Using it](docs/usage.md) — where the action is, the dialog, what each filter reports, and a known issue with
   Grazie in IntelliJ IDEA 2025.3.
 - [Installing](#installing) — requirements, building the plugin archive.
-- [Developing it](docs/development.md) — running, testing, and checking it by hand on a virtual display.
+- [Developing it](docs/development.md) — running, testing, UI tests in a real IDE, and checking it by hand on a
+  virtual display.
 - [License](#license) — AGPL-3.0-or-later.
 
 ## Installing
