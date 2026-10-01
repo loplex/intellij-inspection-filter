@@ -16,6 +16,7 @@ import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.tree.TreeUtil
 import java.awt.BorderLayout
 import javax.swing.JButton
+import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.JTree
 import javax.swing.event.DocumentEvent
@@ -35,7 +36,10 @@ internal class GroupChooser(private val project: Project) {
     var selection: GroupSelection = loadGroupSelection(project)
         private set
 
-    /** The groups on offer: those of the profile the run is to use. */
+    /** The profile the run is to use, whose groups are on offer. */
+    private var profile: InspectionProfileImpl? = null
+
+    /** The groups on offer: those of [profile], as they were when last looked at. */
     private var roots: List<GroupNode> = emptyList()
 
     val summary = JBLabel()
@@ -49,7 +53,12 @@ internal class GroupChooser(private val project: Project) {
 
     /** Offers the groups of [profile], the profile the run is to use. */
     fun setProfile(profile: InspectionProfileImpl) {
-        roots = groupTreesOf(profile, project)
+        this.profile = profile
+        updateGroups()
+    }
+
+    private fun updateGroups() {
+        roots = profile?.let { groupTreesOf(it, project) }.orEmpty()
         updateSummary()
     }
 
@@ -76,6 +85,14 @@ internal class GroupChooser(private val project: Project) {
     }
 
     private fun showPopup() {
+        val content = buildContent()
+        showChooserPopup(button, content.panel, content.focused, content.links)
+    }
+
+    private fun buildContent(): PopupContent {
+        // "Apply" in the profile's editor, opened from the dialog, changes the profile without telling the dialog,
+        // which hears of it only on "OK"; so the groups are looked at anew each time they are shown.
+        updateGroups()
         val rootNode = CheckedTreeNode(null)
         val tree = CheckboxTree(GroupRenderer(), rootNode, CheckboxTreeBase.CheckPolicy(false, false, false, false)).apply {
             isRootVisible = false
@@ -133,13 +150,16 @@ internal class GroupChooser(private val project: Project) {
         })
         showGroups()
 
-        val content = JPanel(BorderLayout()).apply {
+        val panel = JPanel(BorderLayout()).apply {
             add(search, BorderLayout.NORTH)
             add(ScrollPaneFactory.createScrollPane(tree).apply { preferredSize = JBUI.size(360, 400) }, BorderLayout.CENTER)
         }
-        showChooserPopup(button, content, search.textEditor, listOf(checkAll, uncheckAll))
+        return PopupContent(panel, search.textEditor, listOf(checkAll, uncheckAll))
     }
 }
+
+/** What the popup of groups shows: [panel], with [focused] in it, and [links] below it. */
+private class PopupContent(val panel: JComponent, val focused: JComponent, val links: List<JComponent>)
 
 /**
  * Adds [group] under [parent] if it is to be shown for the search [text]: when its name or a name above it matches, so

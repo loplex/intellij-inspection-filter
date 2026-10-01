@@ -1,11 +1,24 @@
 package cz.loplex.inspectionfilter
 
+import com.intellij.codeInspection.LocalInspectionTool
+import com.intellij.codeInspection.ex.InspectionProfileImpl
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.intellij.ui.CheckboxTree
+import com.intellij.ui.CheckedTreeNode
+import com.intellij.util.ui.UIUtil
+import javax.swing.JComponent
 
 class GroupSelectionTest : BasePlatformTestCase() {
 
+    override fun setUp() {
+        super.setUp()
+        // Without it a unit-test run leaves a profile's tools uninitialized, and the profile empty.
+        InspectionProfileImpl.INIT_INSPECTIONS = true
+    }
+
     override fun tearDown() {
         try {
+            InspectionProfileImpl.INIT_INSPECTIONS = false
             forgetStoredFilter(project)
         }
         finally {
@@ -136,4 +149,39 @@ class GroupSelectionTest : BasePlatformTestCase() {
         assertNull(decodeOverride("Java"))
         assertNull(decodeOverride("+Java\\"))
     }
+
+    fun testThePopupOffersTheGroupsOfTheProfileAsItIsWhenItOpens() {
+        val profile = newProfile("Source", supplierOf(AnInspection(), AnInspectionOfAnotherGroup()),
+                                 InspectionProfileImpl.BASE_PROFILE.get(), project)
+        val chooser = GroupChooser(project).apply { setProfile(profile) }
+        assertEquals(listOf("Other", "Test"), groupsOffered(chooser))
+
+        // As "Apply" in the profile's editor does, of which the dialog hears nothing.
+        profile.setToolEnabled(AnInspectionOfAnotherGroup().shortName, false, project)
+
+        assertEquals(listOf("Test"), groupsOffered(chooser))
+    }
+
+    /** The groups at the top of the popup's tree, built as the popup shows it. */
+    private fun groupsOffered(chooser: GroupChooser): List<String> {
+        val content = GroupChooser::class.java.getDeclaredMethod("buildContent").apply { isAccessible = true }.invoke(chooser)
+        val panel = content.javaClass.getDeclaredMethod("getPanel").apply { isAccessible = true }.invoke(content) as JComponent
+        val tree = UIUtil.findComponentOfType(panel, CheckboxTree::class.java)!!
+        return (tree.model.root as CheckedTreeNode).children().toList().map {
+            ((it as CheckedTreeNode).userObject as GroupNode).name
+        }
+    }
+
+    // One class per inspection, each with a constructor taking nothing: copying a profile copies its inspections by
+    // instantiating their classes anew, the way the platform instantiates those registered in plugin.xml.
+    private abstract class TestInspection(private val group: GroupPath) : LocalInspectionTool() {
+        override fun getShortName(): String = javaClass.simpleName
+        override fun getDisplayName(): String = shortName
+        override fun getGroupDisplayName(): String = group.last()
+        override fun getGroupPath(): Array<String> = group.toTypedArray()
+        override fun isEnabledByDefault(): Boolean = true
+    }
+
+    private class AnInspection : TestInspection(listOf("Test"))
+    private class AnInspectionOfAnotherGroup : TestInspection(listOf("Other"))
 }
