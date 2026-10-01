@@ -13,17 +13,22 @@ import com.intellij.driver.sdk.ui.components.elements.comboBox
 import com.intellij.driver.sdk.ui.components.elements.dialog
 import com.intellij.driver.sdk.ui.components.elements.popup
 import com.intellij.driver.sdk.ui.components.elements.radioButton
+import com.intellij.driver.sdk.ui.components.elements.tree
 import com.intellij.driver.sdk.ui.shouldBe
 import com.intellij.driver.sdk.ui.ui
+import com.intellij.driver.sdk.ui.xQuery
+import com.intellij.driver.sdk.waitFor
 import com.intellij.driver.sdk.waitForIndicators
 import com.intellij.ide.starter.driver.engine.BackgroundRun
 import com.intellij.ide.starter.driver.engine.runIdeWithDriver
 import org.junit.jupiter.api.AfterAll
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 
 private const val PLUGIN_ID = "cz.loplex.ij-inspection-filter"
 
@@ -183,6 +188,34 @@ class FilterPopupUiTest {
         summary("All groups").shouldBe { present() }
         x { byVisibleText("Uncheck All") }.shouldBe { present() }
         keyboard { escape() }
+    }
+
+    @Test
+    fun aRunReportsOnlyTheProblemsTheFilterLetsThrough() {
+        val (reported, left) = TYPOS
+        inDialog {
+            radioButton { byVisibleText("Whole project") }.click()
+            // Only Error and Warning are reported when nothing has been chosen.
+            open(Row.SEVERITIES)
+            severityLabel("Typo").click()
+            keyboard { enter() }
+            summary("Error, Warning, Typo").shouldBe { present() }
+            x { byVisibleText("This choice runs into a bug of IntelliJ IDEA 2025.3") }.shouldBe { notPresent() }
+            open(Row.PROBLEMS)
+            keyboard { typeText(reported) }
+            keyboard { enter() }
+            summary("Message contains “$reported”").shouldBe { present() }
+            pressButton("Analyze")
+        }
+        run.driver.withContext {
+            waitForIndicators(5.minutes)
+            val results = ui.tree(xQuery { byType("com.intellij.codeInspection.ui.InspectionTree") })
+            waitFor("Results with $reported", timeout = 30.seconds) {
+                results.expandAll().collectExpandedPathsAsStrings().any { reported in it }
+            }
+            val paths = results.collectExpandedPathsAsStrings()
+            assertTrue(paths.none { left in it }) { "Results with $left too:\n${paths.joinToString("\n")}" }
+        }
     }
 
     /**

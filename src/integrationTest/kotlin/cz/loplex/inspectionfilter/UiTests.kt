@@ -21,6 +21,9 @@ import java.nio.file.Path
 import kotlin.io.path.Path
 import kotlin.io.path.writeText
 
+/** Misspelled words, each of which Typo reports in the project of [ideWithPlugin]. */
+internal val TYPOS = listOf("wrold", "txet")
+
 // Set by the integrationTest task in build.gradle.kts.
 private val platformPath = Path(System.getProperty("path.to.platform"))
 private val pluginPath = Path(System.getProperty("path.to.build.plugin"))
@@ -28,12 +31,12 @@ private val testsDir = Path(System.getProperty("ui.tests.dir"))
 
 /**
  * A context for [testName] that starts the IDE Gradle has unpacked, with the plugin installed and a project of one text
- * file open.
+ * file open, with the typos [TYPOS] in it for a run to report.
  */
 internal fun ideWithPlugin(testName: String): IDETestContext {
     keepStarterUnder(testsDir)
     val projectDir = Files.createDirectories(testsDir.resolve("projects").resolve(testName))
-    projectDir.resolve("a.txt").writeText("Some text\n")
+    projectDir.resolve("a.txt").writeText("Some text, with ${TYPOS.joinToString(" and ")} in it.\n")
     val ide = IdeProductProvider.IU.copy(getInstaller = { InPlaceIdeInstaller(platformPath) })
     val context = Starter.newContext(testName, TestCase(ide, LocalProjectInfo(projectDir)))
     PluginConfigurator(context).installPluginFromPath(pluginPath)
