@@ -86,12 +86,12 @@ class ProblemFilterRunTest : BasePlatformTestCase() {
         assertEquals(emptyList<String>(), findingsOf(runAction()))
     }
 
-    fun testTheProblemsOfAGlobalInspectionInOneElementAreKeptTogether() {
-        // The run decides for all the problems a global inspection reports in a.txt at once: "cherry" comes with "apple".
+    fun testTheProblemsOfAGlobalInspectionInOneElementAreFilteredOneByOne() {
+        // The run keeps all the problems a global inspection reports in a.txt, "cherry" with "apple"; the results do not.
         storeProblemFilter(project, ProblemFilter(messageContains = "apple"))
 
         assertEquals(listOf("Local: apple in a.txt", "Local: apple in b.txt", "External: apple in a.txt", "External: apple in b.txt",
-                            "Global: apple in a.txt", "Global: cherry in a.txt").sorted(), findingsOf(runAction()))
+                            "Global: apple in a.txt").sorted(), findingsOf(runAction()))
     }
 
     fun testARerunKeepsTheFilterOfProblems() {
@@ -134,9 +134,7 @@ class ProblemFilterRunTest : BasePlatformTestCase() {
         a.putUserData(VcsFacade.TEST_REVISION_CONTENT, "apple\nbanana\ncherry pie\n")
         runAndWait(context, AnalysisScope(project))
 
-        // The global inspection's "apple" comes with its "cherry": both are problems of a.txt.
-        assertEquals(listOf("Local: cherry in a.txt", "External: cherry in a.txt", "Global: apple in a.txt", "Global: cherry in a.txt").sorted(),
-                     findingsOf(context))
+        assertEquals(listOf("Local: cherry in a.txt", "External: cherry in a.txt", "Global: cherry in a.txt").sorted(), findingsOf(context))
     }
 
     /** Makes [changes] the files changed since the last commit, each with what it was then. */
@@ -155,10 +153,17 @@ class ProblemFilterRunTest : BasePlatformTestCase() {
         return (contexts - contextsBefore).single()
     }
 
-    /** The findings of [context]'s last run, as "inspection: message in file", sorted. */
+    /**
+     * The findings the results of [context]'s last run show, as "inspection: message in file", sorted. The results are
+     * built first, as the run's own are: what each inspection has kept is shown for each element they show.
+     */
     private fun findingsOf(context: GlobalInspectionContextImpl): List<String> =
-        problemsOf(context).map { (wrapper, problem) ->
-            "${wrapper.shortName}: ${problem.descriptionTemplate} in ${(problem as ProblemDescriptor).psiElement.containingFile.name}"
+        context.tools.values.flatMap { tools -> tools.tools.map { it.tool } }.distinct().flatMap { wrapper ->
+            val presentation = context.getPresentation(wrapper).apply { updateContent() }
+            val shown = presentation.content.values.flatten().flatMap { presentation.problemElements.get(it).orEmpty().asList() }
+            shown.map { problem ->
+                "${wrapper.shortName}: ${problem.descriptionTemplate} in ${(problem as ProblemDescriptor).psiElement.containingFile.name}"
+            }
         }.sorted()
 
     private abstract class ErrorInspection : LocalInspectionTool() {

@@ -105,14 +105,10 @@ The inspections still run over the whole scope, so that global ones, such as **U
 use of what they report on.\
 Local inspections, which check one file at a time, skip the files with no changed line.
 
-#### Caveat: global inspections are filtered element by element
+#### Caveat: elements shown with no problem
 
-A global inspection, such as **Unused declaration**, runs over the whole scope at once rather than file by file.\
-Its problems are filtered for each element it reports them in (a class, a method, a file), all of them at once:
-they are all reported when any one of them passes.
-
-Some of them, **Unused declaration** among them, also show elements they report no problem in: a class or a method
-nothing uses is shown with what the results say of it, but with no problem the filters could look at.\
+Some global inspections, **Unused declaration** among them, also show elements they report no problem in: a class or a
+method nothing uses is shown with what the results say of it, but with no problem the filters could look at.\
 With any of these filters set, those elements are left out, even though **Safe delete** in the results would fix them.\
 They are left out of an export of the results too.
 

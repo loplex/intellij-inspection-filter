@@ -1,6 +1,7 @@
 package cz.loplex.inspectionfilter
 
 import com.intellij.codeHighlighting.HighlightDisplayLevel
+import com.intellij.codeInspection.CommonProblemDescriptor
 import com.intellij.codeInspection.GlobalInspectionContext
 import com.intellij.codeInspection.InspectionManager
 import com.intellij.codeInspection.LocalInspectionEP
@@ -18,6 +19,7 @@ import com.intellij.codeInspection.options.OptPane
 import com.intellij.codeInspection.reference.RefEntity
 import com.intellij.codeInspection.reference.RefManager
 import com.intellij.codeInspection.reference.RefVisitor
+import com.intellij.codeInspection.ui.util.SynchronizedBidiMultiMap
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.text.HtmlChunk
@@ -60,13 +62,14 @@ internal fun wrapForProblemFilter(wrapper: InspectionToolWrapper<*, *>, filter: 
  * [wrapForProblemFilter] leaves as they are - or to filter none, when [filter] is null or leaves nothing out. The
  * context also keeps [filter] as [RUN_PROBLEM_FILTER], for each of its runs to find the lines changed for it.
  *
- * The run decides for all the problems an inspection reports in one element - a class, a method, a file - at once,
- * and keeps them all when [filter] accepts any one. Some global inspections, such as "Unused declaration", also show
- * elements they have reported no problem in: what the results say of those is made up as they are shown, and there is
- * nothing for [filter] to look at. They are left out - of an export of the results too, which is why they are excluded
- * in the results as well: an export goes through every element the run knows of, not through what the results show,
- * and leaves out only what is excluded. It also reaches an element through each one that refines to it, as an implicit
- * constructor does to its class, and those are excluded with it.
+ * The run decides for all the problems an inspection reports in one element - a class, a method, a file - at once, and
+ * keeps them all when [filter] accepts any one. Those [filter] does not accept are left out as the results are built
+ * from what the run has kept, which an export reads as well. Some global inspections, such as "Unused declaration",
+ * also show elements they have reported no problem in: what the results say of those is made up as they are shown, and
+ * there is nothing for [filter] to look at. They are left out - of an export of the results too, which is why they are
+ * excluded in the results as well: an export goes through every element the run knows of, not through what the results
+ * show, and leaves out only what is excluded. It also reaches an element through each one that refines to it, as an
+ * implicit constructor does to its class, and those are excluded with it.
  */
 internal fun filterProblems(context: GlobalInspectionContextEx, filter: RunProblemFilter?) {
     context.putUserData(RUN_PROBLEM_FILTER, filter)
@@ -82,6 +85,7 @@ internal fun filterProblems(context: GlobalInspectionContextEx, filter: RunProbl
         // An inspection with another severity in a scope has a tool of its own there, which reports on its own.
         val states = context.tools[shortName]?.tools ?: return@setGlobalReportedProblemFilter true
         val presentations = states.map { context.getPresentation(it.tool) }
+        presentations.forEach { keepOnlyAccepted(it.problemElements, element, filter) }
         val kept = presentations.any { it.problemElements.containsKey(element) }
         if (!kept) {
             // Not shown, so an exclusion nobody can see or undo.
@@ -89,6 +93,22 @@ internal fun filterProblems(context: GlobalInspectionContextEx, filter: RunProbl
             presentations.forEach { presentation -> excluded.forEach(presentation::exclude) }
         }
         kept
+    }
+}
+
+/**
+ * Leaves in [problems] only those of [element] that [filter] accepts - after the run has kept them all, when any one
+ * passed - or none of them.
+ */
+private fun keepOnlyAccepted(problems: SynchronizedBidiMultiMap<RefEntity, CommonProblemDescriptor>, element: RefEntity,
+                             filter: RunProblemFilter) {
+    val all = problems.get(element) ?: return
+    val accepted = all.filter(filter::accepts)
+    if (accepted.size < all.size) {
+        problems.remove(element)
+        if (accepted.isNotEmpty()) {
+            problems.put(element, *accepted.toTypedArray())
+        }
     }
 }
 
