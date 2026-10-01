@@ -15,6 +15,11 @@ Each row sums up one filter; **Choose…** opens it.
 
 A problem is reported only when its inspection passes the first three rows, and the problem itself the fourth.
 
+A change in a popup applies as it is made:
+
+- **OK**, or a click outside the popup, closes it and keeps the changes.
+- **Esc** closes it and goes back to what was chosen when it opened.
+
 After the filters:
 
 - [What is remembered](#what-is-remembered) — between runs, and on **Rerun**.
@@ -42,6 +47,7 @@ The groups are those of the inspection settings, as a tree with a search field.
 
 - Ticking a group ticks every group under it.
 - **Check All** and **Uncheck All** act on the groups the search has found, or on all of them when there is no search.
+- **Revert** goes back to what was chosen when the popup opened, and leaves it open; it shows once something has changed.
 - Only groups with at least one inspection switched on in the chosen profile are offered.
 
 ## Inspections

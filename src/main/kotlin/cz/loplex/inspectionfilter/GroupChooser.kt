@@ -86,19 +86,25 @@ internal class GroupChooser(private val project: Project) {
 
     private fun showPopup() {
         val content = buildContent()
-        showChooserPopup(button, content.panel, content.focused, content.links)
+        showChooserPopup(button, content.panel, content.focused, content.links, content.revert)
     }
 
     private fun buildContent(): PopupContent {
         // "Apply" in the profile's editor, opened from the dialog, changes the profile without telling the dialog,
         // which hears of it only on "OK"; so the groups are looked at anew each time they are shown.
         updateGroups()
+        val opened = selection
+        // As Esc does, but leaving the popup open: a click on a group high up, or "Uncheck All", can undo a lot.
+        val revert = ActionLink(InspectionFilterBundle.message("dialog.groups.revert")).apply { icon = AllIcons.Actions.Rollback }
         val rootNode = CheckedTreeNode(null)
         val tree = CheckboxTree(GroupRenderer(), rootNode, CheckboxTreeBase.CheckPolicy(false, false, false, false)).apply {
             isRootVisible = false
             showsRootHandles = true
         }
-        val search = SearchTextField(false)
+        val search = object : SearchTextField(false) {
+            // Esc is the popup's, which goes back to what was chosen when it opened; the field's × clears it.
+            override fun toClearTextOnEscape() = false
+        }
         var syncing = false
 
         fun showSelection() {
@@ -112,6 +118,7 @@ internal class GroupChooser(private val project: Project) {
                 syncing = false
             }
             tree.repaint()
+            revert.isEnabled = selection != opened
         }
 
         fun showGroups() {
@@ -145,6 +152,10 @@ internal class GroupChooser(private val project: Project) {
             .apply { icon = AllIcons.Actions.Selectall }
         val uncheckAll = ActionLink(InspectionFilterBundle.message("dialog.groups.uncheckAll")) { checkFound(false) }
             .apply { icon = AllIcons.Actions.Unselectall }
+        revert.addActionListener {
+            select(opened)
+            showSelection()
+        }
         search.addDocumentListener(object : DocumentAdapter() {
             override fun textChanged(e: DocumentEvent) = showGroups()
         })
@@ -154,12 +165,12 @@ internal class GroupChooser(private val project: Project) {
             add(search, BorderLayout.NORTH)
             add(ScrollPaneFactory.createScrollPane(tree).apply { preferredSize = JBUI.size(360, 400) }, BorderLayout.CENTER)
         }
-        return PopupContent(panel, search.textEditor, listOf(checkAll, uncheckAll))
+        return PopupContent(panel, search.textEditor, listOf(checkAll, uncheckAll, revert)) { select(opened) }
     }
 }
 
-/** What the popup of groups shows: [panel], with [focused] in it, and [links] below it. */
-private class PopupContent(val panel: JComponent, val focused: JComponent, val links: List<JComponent>)
+/** What the popup of groups shows: [panel], with [focused] in it, and [links] below it; and how to [revert] it. */
+private class PopupContent(val panel: JComponent, val focused: JComponent, val links: List<JComponent>, val revert: () -> Unit)
 
 /**
  * Adds [group] under [parent] if it is to be shown for the search [text]: when its name or a name above it matches, so

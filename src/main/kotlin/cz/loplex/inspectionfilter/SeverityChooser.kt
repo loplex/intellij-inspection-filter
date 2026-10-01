@@ -67,15 +67,19 @@ internal class SeverityChooser(private val project: Project) {
         changeListeners.forEach { it() }
     }
 
-    private fun showPopup() {
+    /** Opens the popup; Esc goes back to [opened], which reopening it after "Edit Severities…" keeps. */
+    private fun showPopup(opened: StoredSeverities = StoredSeverities.load(project)) {
         lateinit var popup: JBPopup
         val edit = ActionLink(InspectionFilterBundle.message("dialog.severities.edit")) {
             // A modal dialog would take the focus from the popup, and so close it anyway; opened again when done.
             popup.cancel()
             editSeverities()
-            showPopup()
+            showPopup(opened)
         }
-        popup = showChooserPopup(button, buildContent(), links = listOf(edit))
+        popup = showChooserPopup(button, buildContent(), links = listOf(edit)) {
+            opened.store(project)
+            changed()
+        }
     }
 
     private fun buildContent(): JComponent {
@@ -172,6 +176,21 @@ internal class SeverityChooser(private val project: Project) {
         // The editor is a modal dialog, so it is closed by the time this returns.
         ActionUtil.performAction(action, event)
         changed()
+    }
+}
+
+/** All that is stored of the choice of severities, whichever the mode. */
+private class StoredSeverities(val mode: SeverityMode, val lowestName: String, val selectedNames: Set<String>) {
+
+    fun store(project: Project) {
+        storeSeverityMode(project, mode)
+        storeLowestSeverityName(project, lowestName)
+        storeSelectedSeverityNames(project, selectedNames)
+    }
+
+    companion object {
+        fun load(project: Project) =
+            StoredSeverities(loadSeverityMode(project), loadLowestSeverityName(project), loadSelectedSeverityNames(project))
     }
 }
 

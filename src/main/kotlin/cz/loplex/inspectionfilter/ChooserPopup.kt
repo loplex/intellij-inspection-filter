@@ -1,13 +1,19 @@
 package cz.loplex.inspectionfilter
 
 import com.intellij.CommonBundle
+import com.intellij.openapi.actionSystem.ActionUpdateThread
+import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.actionSystem.CommonShortcuts
+import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.ui.popup.JBPopup
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.util.text.HtmlChunk
 import com.intellij.util.ui.JBUI
 import java.awt.BorderLayout
 import java.awt.FlowLayout
+import java.awt.KeyboardFocusManager
 import javax.swing.JButton
+import javax.swing.JComboBox
 import javax.swing.JComponent
 import javax.swing.JPanel
 
@@ -32,13 +38,15 @@ internal fun linesOf(lines: List<String>): String =
 
 /**
  * Shows [content] under [owner] the way every choice of the dialog is shown: every change in it is applied, and
- * stored, as it is made, so its OK only closes it. [links] go at the bottom, left of the OK; [focused] gets the focus.
+ * stored, as it is made, so its OK only closes it, and so does a click outside it; Esc closes it after [revert] has
+ * gone back to what was chosen when it opened. [links] go at the bottom, left of the OK; [focused] gets the focus.
  */
 internal fun showChooserPopup(
     owner: JComponent,
     content: JComponent,
     focused: JComponent? = null,
     links: List<JComponent> = emptyList(),
+    revert: () -> Unit,
 ): JBPopup {
     val ok = JButton(CommonBundle.getOkButtonText()).apply {
         // As high as the links beside it rather than as a dialog's buttons; what the platform's own popups set.
@@ -57,8 +65,24 @@ internal fun showChooserPopup(
         .setResizable(true)
         .setMovable(true)
         .setCancelOnClickOutside(true)
+        // The popup's own Esc would close it as a click outside does, keeping the changes.
+        .setCancelKeyEnabled(false)
         .createPopup()
     ok.addActionListener { popup.closeOk(null) }
+    object : DumbAwareAction() {
+        override fun getActionUpdateThread() = ActionUpdateThread.EDT
+
+        // Left to an open list of a combo box, which Esc closes first.
+        override fun update(e: AnActionEvent) {
+            val focused = KeyboardFocusManager.getCurrentKeyboardFocusManager().focusOwner
+            e.presentation.isEnabled = (focused as? JComboBox<*>)?.isPopupVisible != true
+        }
+
+        override fun actionPerformed(e: AnActionEvent) {
+            revert()
+            popup.cancel()
+        }
+    }.registerCustomShortcutSet(CommonShortcuts.ESCAPE, panel)
     popup.showUnderneathOf(owner)
     return popup
 }

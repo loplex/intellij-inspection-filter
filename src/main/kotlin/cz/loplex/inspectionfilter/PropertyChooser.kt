@@ -30,6 +30,13 @@ internal class PropertyChooser(private val project: Project) {
         changeListeners += listener
     }
 
+    private fun choose(chosen: Set<InspectionProperty>) {
+        requiredProperties = chosen
+        storeRequiredProperties(project, chosen)
+        updateSummary()
+        changeListeners.forEach { it() }
+    }
+
     private fun updateSummary() {
         val (text, tooltip) = propertySummary(requiredProperties)
         summary.text = text
@@ -37,23 +44,19 @@ internal class PropertyChooser(private val project: Project) {
     }
 
     private fun showPopup() {
+        val opened = requiredProperties
         val checkBoxes = InspectionProperty.entries.associateWith { property ->
             JBCheckBox(InspectionFilterBundle.message(property.messageKey), property in requiredProperties)
         }
         for (checkBox in checkBoxes.values) {
-            checkBox.addActionListener {
-                requiredProperties = checkBoxes.filterValues { it.isSelected }.keys
-                storeRequiredProperties(project, requiredProperties)
-                updateSummary()
-                changeListeners.forEach { it() }
-            }
+            checkBox.addActionListener { choose(checkBoxes.filterValues { it.isSelected }.keys) }
         }
         val content = panel {
             for ((property, checkBox) in checkBoxes) {
                 row { cell(checkBox).comment(InspectionFilterBundle.message(property.descriptionKey)) }
             }
         }.apply { border = JBUI.Borders.empty(8, 12) }
-        showChooserPopup(button, content)
+        showChooserPopup(button, content) { choose(opened) }
     }
 }
 

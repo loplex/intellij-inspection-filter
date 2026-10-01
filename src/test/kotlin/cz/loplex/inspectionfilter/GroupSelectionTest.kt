@@ -5,6 +5,7 @@ import com.intellij.codeInspection.ex.InspectionProfileImpl
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.ui.CheckboxTree
 import com.intellij.ui.CheckedTreeNode
+import com.intellij.ui.components.ActionLink
 import com.intellij.util.ui.UIUtil
 import javax.swing.JComponent
 
@@ -151,8 +152,7 @@ class GroupSelectionTest : BasePlatformTestCase() {
     }
 
     fun testThePopupOffersTheGroupsOfTheProfileAsItIsWhenItOpens() {
-        val profile = newProfile("Source", supplierOf(AnInspection(), AnInspectionOfAnotherGroup()),
-                                 InspectionProfileImpl.BASE_PROFILE.get(), project)
+        val profile = testProfile()
         val chooser = GroupChooser(project).apply { setProfile(profile) }
         assertEquals(listOf("Other", "Test"), groupsOffered(chooser))
 
@@ -162,14 +162,58 @@ class GroupSelectionTest : BasePlatformTestCase() {
         assertEquals(listOf("Test"), groupsOffered(chooser))
     }
 
+    fun testRevertGoesBackToTheGroupsChosenWhenThePopupOpened() {
+        val profile = testProfile()
+        val opened = GroupSelection().with(groupTreesOf(profile, project).single { it.name == "Other" }, false)
+        storeGroupSelection(project, opened)
+        val content = PopupContent(GroupChooser(project).apply { setProfile(profile) })
+        val revert = content.link("Revert")
+        assertFalse(revert.isEnabled)
+
+        content.link("Uncheck All").doClick()
+        assertTrue(revert.isEnabled)
+        revert.doClick()
+
+        assertEquals(opened, loadGroupSelection(project))
+        assertFalse(revert.isEnabled)
+    }
+
+    fun testEscGoesBackToTheGroupsChosenWhenThePopupOpened() {
+        val profile = testProfile()
+        val content = PopupContent(GroupChooser(project).apply { setProfile(profile) })
+
+        content.link("Uncheck All").doClick()
+        content.revert()
+
+        assertEquals(GroupSelection(), loadGroupSelection(project))
+    }
+
+    private fun testProfile(): InspectionProfileImpl =
+        newProfile("Source", supplierOf(AnInspection(), AnInspectionOfAnotherGroup()), InspectionProfileImpl.BASE_PROFILE.get(),
+                   project)
+
     /** The groups at the top of the popup's tree, built as the popup shows it. */
     private fun groupsOffered(chooser: GroupChooser): List<String> {
-        val content = GroupChooser::class.java.getDeclaredMethod("buildContent").apply { isAccessible = true }.invoke(chooser)
-        val panel = content.javaClass.getDeclaredMethod("getPanel").apply { isAccessible = true }.invoke(content) as JComponent
-        val tree = UIUtil.findComponentOfType(panel, CheckboxTree::class.java)!!
+        val tree = UIUtil.findComponentOfType(PopupContent(chooser).panel, CheckboxTree::class.java)!!
         return (tree.model.root as CheckedTreeNode).children().toList().map {
             ((it as CheckedTreeNode).userObject as GroupNode).name
         }
+    }
+
+    /** The popup of [chooser], built as it is shown: its content is private to it. */
+    private class PopupContent(chooser: GroupChooser) {
+        private val content = GroupChooser::class.java.getDeclaredMethod("buildContent").apply { isAccessible = true }
+            .invoke(chooser)
+
+        val panel = get("getPanel") as JComponent
+
+        fun link(text: String): ActionLink = (get("getLinks") as List<*>).filterIsInstance<ActionLink>().single { it.text == text }
+
+        fun revert() {
+            (get("getRevert") as Function0<*>)()
+        }
+
+        private fun get(getter: String): Any? = content.javaClass.getDeclaredMethod(getter).apply { isAccessible = true }.invoke(content)
     }
 
     // One class per inspection, each with a constructor taking nothing: copying a profile copies its inspections by

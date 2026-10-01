@@ -40,6 +40,7 @@ internal class ProblemChooser(private val project: Project) {
     }
 
     private fun showPopup() {
+        val opened = filter
         val onChangedLines = JBCheckBox(InspectionFilterBundle.message("dialog.problems.onChangedLines"), filter.onChangedLines)
         onChangedLines.addActionListener { choose(filter.copy(onChangedLines = onChangedLines.isSelected)) }
         val withQuickFix = JBCheckBox(InspectionFilterBundle.message("dialog.problems.withQuickFix"), filter.withQuickFix)
@@ -57,7 +58,7 @@ internal class ProblemChooser(private val project: Project) {
                 cell(messageContains).align(AlignX.FILL).comment(InspectionFilterBundle.message("dialog.problems.messageContains.description"))
             }
         }.apply { border = JBUI.Borders.empty(8, 12) }
-        val popup = showChooserPopup(button, content, focused = messageContains)
+        val popup = showChooserPopup(button, content, focused = messageContains) { choose(opened) }
         // As the OK does: the text is taken as it is typed.
         messageContains.addActionListener { popup.closeOk(null) }
     }
