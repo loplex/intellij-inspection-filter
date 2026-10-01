@@ -28,7 +28,8 @@ X_SERVER=xephyr scripts/ui-tests.sh --tests '*FilterPopupUiTest*'
 - In CI too, the script is all it takes: it starts the virtual display itself.
 - Arguments go on to Gradle.
 - Where `$DISPLAY` is already the one to use, `./gradlew integrationTest` runs the tests just as well.
-- Each test starts an IDE of its own, so it takes a minute or so.
+- `FilterPopupUiTest` starts one IDE for all its tests, and that takes a minute or so.
+- Before each of its tests, it forgets the filter stored in the project, so that each starts from nothing chosen.
 - The IDE is the one the plugin is built against, run from where Gradle unpacked it: Starter downloads none.
 - The IDE's configuration, logs and reports go to `build/ui-tests`.
 
