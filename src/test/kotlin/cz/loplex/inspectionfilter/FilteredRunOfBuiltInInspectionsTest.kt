@@ -1,6 +1,7 @@
 package cz.loplex.inspectionfilter
 
 import com.intellij.analysis.AnalysisScope
+import com.intellij.codeInsight.actions.VcsFacade
 import com.intellij.codeInspection.CommonProblemDescriptor
 import com.intellij.codeInspection.ProblemDescriptor
 import com.intellij.codeInspection.ex.GlobalInspectionContextImpl
@@ -43,6 +44,12 @@ class FilteredRunOfBuiltInInspectionsTest : BasePlatformTestCase() {
                 void unusedParameter(int never) { System.out.println(written); }
 
                 private static class Nested {}
+
+                // Its annotation, its name and its body each on a line of their own.
+                @Deprecated
+                void annotated() {
+                    System.out.println("annotated");
+                }
             }
         """.trimIndent())
     }
@@ -50,6 +57,7 @@ class FilteredRunOfBuiltInInspectionsTest : BasePlatformTestCase() {
     override fun tearDown() {
         try {
             InspectionProfileImpl.INIT_INSPECTIONS = false
+            project.putUserData(TEST_CHANGED_FILES, null)
         }
         finally {
             super.tearDown()
@@ -107,9 +115,10 @@ class FilteredRunOfBuiltInInspectionsTest : BasePlatformTestCase() {
     fun testUnusedDeclarationShowsOnlyTheElementsWithAProblemTheFilterKeeps() {
         // It shows the classes and methods nothing uses with no problem reported in them; it reports one only for a
         // parameter, as "Parameter never is not used".
-        assertEquals(listOf("Foo()", "Foo(int)", "Nested", "pointless(boolean)", "read()", "recurse()", "unusedParameter(int)"),
+        assertEquals(listOf("Foo()", "Foo(int)", "Nested", "annotated()", "pointless(boolean)", "read()", "recurse()",
+                            "unusedParameter(int)"),
                      unusedDeclarationsShown(null))
-        assertEquals(listOf("unusedParameter(int)"), unusedDeclarationsShown(ProblemFilter(messageContains = "never")))
+        assertEquals(listOf("unusedParameter(int)"), unusedDeclarationsShown(ProblemFilter(messageContains = "parameter")))
     }
 
     fun testUnusedDeclarationExportsOnlyTheElementsItShows() {
@@ -117,23 +126,99 @@ class FilteredRunOfBuiltInInspectionsTest : BasePlatformTestCase() {
         // constructor too.
         assertContainsElements(unusedDeclarationsExported(null), "Foo.Nested: Class is not instantiated.", "Foo int read()")
         assertEquals(listOf("Foo void unusedParameter(int never)", "Foo void unusedParameter(int never): Parameter never is not used"),
-                     unusedDeclarationsExported(ProblemFilter(messageContains = "never")))
+                     unusedDeclarationsExported(ProblemFilter(messageContains = "parameter")))
     }
 
     fun testUnusedDeclarationExportsOnlyTheElementsItShowsAfterARerun() {
         // A rerun builds the graph of its elements anew.
         assertEquals(listOf("Foo void unusedParameter(int never)", "Foo void unusedParameter(int never): Parameter never is not used"),
-                     unusedDeclarationsExported(ProblemFilter(messageContains = "never"), rerun = true))
+                     unusedDeclarationsExported(ProblemFilter(messageContains = "parameter"), rerun = true))
+    }
+
+    fun testUnusedDeclarationShowsAnElementWithNoProblemByWhatItSaysOfIt() {
+        val filter = ProblemFilter(messageContains = "IS NOT INSTANTIATED")
+
+        assertEquals(listOf("Nested"), unusedDeclarationsShown(filter))
+        assertEquals(listOf("Foo.Nested: Class is not instantiated."), unusedDeclarationsExported(filter))
+    }
+
+    fun testUnusedDeclarationMatchesWhatItSaysOfAnElementAsPlainText() {
+        // "Method owner class is never instantiated OR All instantiations are not reachable from the entry points.",
+        // which is a list. The method with an unused parameter is one nothing uses as well, whatever its problem.
+        assertEquals(listOf("annotated()", "pointless(boolean)", "read()", "recurse()", "unusedParameter(int)"),
+                     unusedDeclarationsShown(ProblemFilter(messageContains = "instantiated or all")))
+    }
+
+    fun testUnusedDeclarationShowsEveryElementWithNoProblemAsOneWithAQuickFix() {
+        val filter = ProblemFilter(withQuickFix = true)
+
+        assertEquals(unusedDeclarationsShown(null), unusedDeclarationsShown(filter))
+        assertEquals(unusedDeclarationsExported(null), unusedDeclarationsExported(filter))
+    }
+
+    fun testUnusedDeclarationShowsAnElementWithNoProblemWhenItsNameIsOnAChangedLine() {
+        val filter = ProblemFilter(onChangedLines = true)
+
+        changeSinceTheLastCommit("void annotated() {", "void annotated() { // before")
+        assertEquals(listOf("annotated()"), unusedDeclarationsShown(filter))
+        assertEquals(listOf("Foo void annotated()"), unusedDeclarationsExported(filter))
+    }
+
+    fun testUnusedDeclarationLeavesOutAnElementWithNoProblemWhenOnlyAnotherLineOfItIsChanged() {
+        val filter = ProblemFilter(onChangedLines = true)
+
+        changeSinceTheLastCommit("@Deprecated", "@Deprecated // before")
+        assertEquals(emptyList<String>(), unusedDeclarationsShown(filter))
+        changeSinceTheLastCommit("System.out.println(\"annotated\");", "System.out.println(\"before\");")
+        assertEquals(emptyList<String>(), unusedDeclarationsShown(filter))
+        assertEquals(emptyList<String>(), unusedDeclarationsExported(filter))
+    }
+
+    fun testUnusedDeclarationDoesNotShowAnElementWhoseProblemsAreFixedAsOneNothingUses() {
+        // A method called, and so not shown as one nothing uses, with a parameter it does not use - one named "ignored"
+        // would not be reported.
+        myFixture.addFileToProject("Main.java", """
+            public class Main {
+                public static void main(String[] args) { log(1); }
+
+                private static void log(int level) {}
+            }
+        """.trimIndent())
+
+        val (before, after) = runInspections(project, InspectionProfileImpl("Built-in"), read = { context ->
+            val presentation = context.getPresentation(context.tools.getValue("unused").tools.single().tool)
+            val shown = { presentation.updateContent(); presentation.content.values.flatten().map { it.name }.sorted() }
+            val before = shown()
+            // As a quick fix applied in the results does; they may then be built again, with the problems fixed shown
+            // unless the results are to filter them out.
+            context.uiOptions.FILTER_RESOLVED_ITEMS = false
+            presentation.problemDescriptors.filter { presentation.problemElements.getKeyFor(it)?.name == "log(int)" }
+                .forEach(presentation::resolveProblem)
+            before to shown()
+        }, setUp = { filterProblems(it, RunProblemFilter(ProblemFilter(withQuickFix = true))) })
+
+        assertContainsElements(before, "log(int)")
+        assertDoesntContain(after, "log(int)")
+    }
+
+    /** Makes Foo.java a file changed since the last commit, where it had [before] in place of [now]. */
+    private fun changeSinceTheLastCommit(now: String, before: String) {
+        val file = myFixture.findFileInTempDir("Foo.java")
+        val psiFile = psiManager.findFile(file)!!
+        assertTrue(now in psiFile.text)
+        psiFile.putUserData(VcsFacade.TEST_REVISION_CONTENT, psiFile.text.replace(now, before))
+        project.putUserData(TEST_CHANGED_FILES, listOf(file))
     }
 
     /** The elements the results of a run filtered by [filter] show under "Unused declaration". */
     private fun unusedDeclarationsShown(filter: ProblemFilter?): List<String> =
         runInspections(project, InspectionProfileImpl("Built-in"), read = { context ->
-            context.tools.getValue("unused").tools.flatMap { state ->
-                // What the results would show; a unit test builds no results to show it in.
-                val presentation = context.getPresentation(state.tool).apply { updateContent() }
-                presentation.content.values.flatten().map { it.name }
-            }.sorted()
+            // What the results would show, built for every inspection, as they are - those of the others first, which
+            // report in the same elements; a unit test builds no results to show them in.
+            val presentations = context.tools.values.flatMap { it.tools }.associate { it.tool.shortName to context.getPresentation(it.tool) }
+            (presentations - "unused").values.forEach { it.updateContent() }
+            val unused = presentations.getValue("unused").apply { updateContent() }
+            unused.content.values.flatten().map { it.name }.sorted()
         }, setUp = { filterProblems(it, filter?.let(::RunProblemFilter)) })
 
     /**

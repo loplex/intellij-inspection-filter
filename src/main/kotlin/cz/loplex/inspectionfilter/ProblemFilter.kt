@@ -3,6 +3,7 @@ package cz.loplex.inspectionfilter
 import com.intellij.codeInspection.CommonProblemDescriptor
 import com.intellij.codeInspection.ProblemDescriptor
 import com.intellij.codeInspection.ProblemDescriptorUtil
+import com.intellij.codeInspection.reference.RefElement
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.project.Project
@@ -37,6 +38,16 @@ internal data class ProblemFilter(
         (!withQuickFix || !problem.fixes.isNullOrEmpty()) &&
         (messageContains.isBlank() || messageOf(problem).contains(messageContains, ignoreCase = true)) &&
         (!onChangedLines || changedLines.contain(problem))
+
+    /**
+     * Whether an element "Unused declaration" shows with no problem reported in it - see [UNUSED_DECLARATION] - is one
+     * to report, with [message] what the results say of it and [nameChanged] whether its name is on a changed line.
+     * Every such element comes with a quick fix: the results offer "Safe delete", "Comment out" and the like for each
+     * one they show, until one of them is applied.
+     */
+    fun acceptsUnusedDeclaration(message: () -> String, nameChanged: () -> Boolean): Boolean =
+        (messageContains.isBlank() || message().contains(messageContains, ignoreCase = true)) &&
+        (!onChangedLines || nameChanged())
 }
 
 /**
@@ -50,6 +61,11 @@ internal class RunProblemFilter(val filter: ProblemFilter) {
     var changedLines: ChangedLines = ChangedLines.NONE
 
     fun accepts(problem: CommonProblemDescriptor): Boolean = filter.accepts(problem, changedLines)
+
+    /** Whether [element], which "Unused declaration" shows with no problem in it, is one to report. */
+    fun acceptsUnusedDeclaration(element: RefElement): Boolean =
+        filter.acceptsUnusedDeclaration({ UnusedDeclarationMessages.instance?.of(element).orEmpty() },
+                                        { changedLines.containNameOf(element) })
 
     /** Whether [file] can have any problem this filter accepts, and so whether it is worth inspecting at all. */
     fun mayAcceptIn(file: PsiFile): Boolean = !filter.onChangedLines || changedLines.hasAnyIn(file)

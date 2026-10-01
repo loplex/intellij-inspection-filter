@@ -84,7 +84,9 @@ These filter the problems themselves, one by one, rather than the inspections th
 - **Message contains**: those whose message, as the results show it, contains the text, ignoring case.
   Leave it empty for any message.
 
-With more than one, a problem has to pass them all.
+With more than one, a problem has to pass them all.\
+**Unused declaration** also shows elements with no problem in them, which the filters judge by
+[what is shown of them](#how-elements-nothing-uses-are-filtered).
 
 #### What counts as a changed line
 
@@ -105,12 +107,22 @@ The inspections still run over the whole scope, so that global ones, such as **U
 use of what they report on.\
 Local inspections, which check one file at a time, skip the files with no changed line.
 
-#### Caveat: elements shown with no problem
+#### How elements nothing uses are filtered
 
-Some global inspections, **Unused declaration** among them, also show elements they report no problem in: a class or a
-method nothing uses is shown with what the results say of it, but with no problem the filters could look at.\
-With any of these filters set, those elements are left out, even though **Safe delete** in the results would fix them.\
-They are left out of an export of the results too.
+**Unused declaration** shows a class, method or field nothing uses with no problem reported in it.\
+What the results say of it, such as "Method is never used.", is made up only as it is shown.\
+The filters judge such an element by what is shown of it instead:
+
+- **On lines changed**: its name is on a changed line, as the editor marks the name.
+  A changed annotation or body line alone does not count.
+- **With a quick fix only**: it always passes.
+  The results offer **Safe delete**, **Comment out** and **Add as Entry Point** for every such element, until one of
+  them is applied.
+- **Message contains**: the description in its preview contains the text, ignoring case.
+  The node in the tree shows only the element's name; an export of the results gives the same description.
+
+An element left out is left out of an export of the results too.\
+The parameters and variables nothing uses are problems like any other, and are filtered as such.
 
 ### What is remembered
 

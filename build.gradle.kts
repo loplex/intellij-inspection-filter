@@ -17,6 +17,8 @@ dependencies {
 
     intellijPlatform {
         intellijIdea("2025.3.5")
+        // Optional at runtime: for what "Unused declaration" says of an element it reports no problem in.
+        bundledPlugin("com.intellij.java")
         testFramework(TestFrameworkType.Platform)
     }
 }

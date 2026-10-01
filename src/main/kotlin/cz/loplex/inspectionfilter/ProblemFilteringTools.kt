@@ -16,6 +16,7 @@ import com.intellij.codeInspection.ex.InspectionToolWrapper
 import com.intellij.codeInspection.ex.LocalInspectionToolWrapper
 import com.intellij.codeInspection.ex.PairedUnfairLocalInspectionTool
 import com.intellij.codeInspection.options.OptPane
+import com.intellij.codeInspection.reference.RefElement
 import com.intellij.codeInspection.reference.RefEntity
 import com.intellij.codeInspection.reference.RefManager
 import com.intellij.codeInspection.reference.RefVisitor
@@ -64,12 +65,20 @@ internal fun wrapForProblemFilter(wrapper: InspectionToolWrapper<*, *>, filter: 
  *
  * The run decides for all the problems an inspection reports in one element - a class, a method, a file - at once, and
  * keeps them all when [filter] accepts any one. Those [filter] does not accept are left out as the results are built
- * from what the run has kept, which an export reads as well. Some global inspections, such as "Unused declaration",
- * also show elements they have reported no problem in: what the results say of those is made up as they are shown, and
- * there is nothing for [filter] to look at. They are left out - of an export of the results too, which is why they are
- * excluded in the results as well: an export goes through every element the run knows of, not through what the results
- * show, and leaves out only what is excluded. It also reaches an element through each one that refines to it, as an
- * implicit constructor does to its class, and those are excluded with it.
+ * from what the run has kept, which an export reads as well.
+ *
+ * "Unused declaration" also shows the classes, methods and fields nothing uses, with no problem reported in them: what
+ * the results say of those is made up as they are shown. [filter] judges them by that, by their name, and as elements
+ * with a quick fix - see [RunProblemFilter.acceptsUnusedDeclaration]. They are the elements its results are built from
+ * with no problem kept: the results are given the elements nothing uses and then those with a problem the run has kept,
+ * and the run keeps the problems of an element only when [filter] accepts one of them, which is still there once the
+ * others are left out. An element whose problems are fixed since is not judged so: the results may be built again
+ * after a fix.
+ *
+ * An element left out is left out of an export of the results too, which is why it is excluded in the results as
+ * well: an export goes through every element the run knows of, not through what the results show, and leaves out only
+ * what is excluded. It also reaches an element through each one that refines to it, as an implicit constructor does to
+ * its class, and those are excluded with it.
  */
 internal fun filterProblems(context: GlobalInspectionContextEx, filter: RunProblemFilter?) {
     context.putUserData(RUN_PROBLEM_FILTER, filter)
@@ -80,13 +89,19 @@ internal fun filterProblems(context: GlobalInspectionContextEx, filter: RunProbl
     }
     context.setReportedProblemFilter { _, problems -> problems.any(filter::accepts) }
     val refinedFrom = RefinedFrom()
-    // Asked for every element the results are to show, and so the one place to leave out those with no problem kept.
+    val withProblems = WithProblems()
+    // Asked for every element the results are to show, and so the one place to decide on those with no problem kept.
     context.setGlobalReportedProblemFilter { element, shortName ->
         // An inspection with another severity in a scope has a tool of its own there, which reports on its own.
         val states = context.tools[shortName]?.tools ?: return@setGlobalReportedProblemFilter true
         val presentations = states.map { context.getPresentation(it.tool) }
+        // One with a problem the run has kept keeps one [filter] accepts. One with none is shown as an element nothing
+        // uses - unless it had problems that are fixed since.
+        val hadProblems = withProblems.note(shortName, element, presentations.any { it.problemElements.containsKey(element) },
+                                            context.refManager)
         presentations.forEach { keepOnlyAccepted(it.problemElements, element, filter) }
-        val kept = presentations.any { it.problemElements.containsKey(element) }
+        val kept = presentations.any { it.problemElements.containsKey(element) } ||
+                   !hadProblems && shortName == UNUSED_DECLARATION && element is RefElement && filter.acceptsUnusedDeclaration(element)
         if (!kept) {
             // Not shown, so an exclusion nobody can see or undo.
             val excluded = listOf(element) + refinedFrom.of(element, context.refManager)
@@ -109,6 +124,28 @@ private fun keepOnlyAccepted(problems: SynchronizedBidiMultiMap<RefEntity, Commo
         if (accepted.isNotEmpty()) {
             problems.put(element, *accepted.toTypedArray())
         }
+    }
+}
+
+/** The elements of a run's graph each inspection has had a problem in, whether or not it is left out or fixed since. */
+private class WithProblems {
+    private var refManager: RefManager? = null
+    private val elements = HashSet<Pair<String, RefEntity>>()
+
+    /**
+     * Notes whether [element] has any problem of the inspection [shortName] now, as [hasProblems] tells, in the graph of
+     * [refManager], which every run has one of its own; and tells whether it has had any in that run.
+     */
+    @Synchronized
+    fun note(shortName: String, element: RefEntity, hasProblems: Boolean, refManager: RefManager): Boolean {
+        if (this.refManager !== refManager) {
+            this.refManager = refManager
+            elements.clear()
+        }
+        if (hasProblems) {
+            elements += shortName to element
+        }
+        return shortName to element in elements
     }
 }
 

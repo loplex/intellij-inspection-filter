@@ -13,6 +13,7 @@ import com.intellij.codeInspection.lang.GlobalInspectionContextExtension
 import com.intellij.codeInspection.lang.HTMLComposerExtension
 import com.intellij.codeInspection.lang.InspectionExtensionsFactory
 import com.intellij.codeInspection.lang.RefManagerExtension
+import com.intellij.codeInspection.reference.RefElement
 import com.intellij.codeInspection.reference.RefManager
 import com.intellij.lang.injection.InjectedLanguageManager
 import com.intellij.openapi.application.ApplicationManager
@@ -27,6 +28,7 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiManager
+import com.intellij.psi.PsiNameIdentifierOwner
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -57,6 +59,20 @@ internal class ChangedLines(private val ranges: Map<VirtualFile, List<TextRange>
      */
     fun contain(problem: CommonProblemDescriptor): Boolean = ReadAction.compute<Boolean, RuntimeException> {
         val (file, range) = locate(problem) ?: return@compute false
+        ranges[file].orEmpty().any { it.intersects(range) }
+    }
+
+    /**
+     * Whether the name of [element] is on a changed line: the code the editor marks for an element shown with no
+     * problem in it. An element with no name of its own is taken as a whole.
+     */
+    fun containNameOf(element: RefElement): Boolean = ReadAction.compute<Boolean, RuntimeException> {
+        val psiElement = element.psiElement ?: return@compute false
+        val name = (psiElement as? PsiNameIdentifierOwner)?.nameIdentifier ?: psiElement
+        val nameRange = name.textRange ?: return@compute false
+        val injectedLanguageManager = InjectedLanguageManager.getInstance(name.project)
+        val file = injectedLanguageManager.getTopLevelFile(name)?.virtualFile ?: return@compute false
+        val range = injectedLanguageManager.injectedToHost(name, nameRange)
         ranges[file].orEmpty().any { it.intersects(range) }
     }
 

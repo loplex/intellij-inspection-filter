@@ -18,6 +18,8 @@
     <depends>com.intellij.modules.lang</depends>
     <!-- Finding the lines changed since the last commit. -->
     <depends>com.intellij.modules.vcs</depends>
+    <!-- What "Unused declaration" says of a class, method or field nothing uses; the inspection is Java's. -->
+    <depends optional="true" config-file="inspection-filter-java.xml">com.intellij.java</depends>
 
     <resource-bundle>messages.InspectionFilterBundle</resource-bundle>
 
