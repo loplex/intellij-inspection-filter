@@ -36,9 +36,13 @@ internal fun loadInspectionFilter(project: Project): InspectionFilter =
  * [wrapForProblemFilter]. The problems of the others are filtered by the run, which the profile cannot do:
  * [InspectCodeWithFiltersAction] sets it up.
  *
- * The one exception is the Grazie runner in builds before 261, which follows its children instead - see
- * [grazieRunnerEnabled]. [baselineVersion] is the build's, and [baseProfile] the defaults an inspection is modified
- * against (see [hasProperties]); both are parameters so that tests can choose them.
+ * Two exceptions are left as in [source] instead:
+ * - an inspection that one left on names its main tool, as a custom Structural Search or RegExp inspection names the
+ *   one that reports for it: the run adds it whatever the profile says, and it is wrapped like the others;
+ * - the Grazie runner in builds before 261, whose children name no main tool, follows them - see [grazieRunnerEnabled].
+ *
+ * [baselineVersion] is the build's, and [baseProfile] the defaults an inspection is modified against (see
+ * [hasProperties]); both are parameters so that tests can choose them.
  *
  * Like the profile "Run Inspection by Name" builds for its run, the copy lives until the project is closed: the
  * inspection context never releases the profile it was given.
@@ -58,7 +62,12 @@ internal class FilteredProfile(
         initInspectionTools(project)
         // Decided before anything is switched off, while the copy still reads as the source.
         val grazieRunnerEnabled = grazieRunnerEnabled(this, filter, project, baselineVersion, baseProfile)
+        val mainTools = tools.filter { it.isKeptBy(filter, baseProfile) }.mapNotNullTo(HashSet()) { it.tool.mainToolId }
         for (toolList in tools) {
+            if (toolList.shortName in mainTools) {
+                // Run as in the source - by the platform, when it is off here - reporting only for those left on.
+                continue
+            }
             if (grazieRunnerEnabled != null && toolList.shortName == GRAZIE_RUNNER) {
                 // Left as in the source when on, severities and scopes included: it reports nothing of its own.
                 if (!grazieRunnerEnabled) {
@@ -88,7 +97,7 @@ internal class FilteredProfile(
         // Only when it leaves anything out, so that a run with no such filter runs the inspections as they are.
         if (filter.problems.isActive) {
             for (toolList in tools) {
-                if (toolList.isEnabled) {
+                if (toolList.isEnabled || toolList.shortName in mainTools) {
                     for (state in toolList.tools) {
                         state.setTool(wrapForProblemFilter(state.tool, problemFilter))
                     }

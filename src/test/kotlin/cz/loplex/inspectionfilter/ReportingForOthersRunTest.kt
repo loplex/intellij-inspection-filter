@@ -72,6 +72,16 @@ class ReportingForOthersRunTest : BasePlatformTestCase() {
         assertEquals(listOf("An apple"), findingsOf(runAction(), custom.uuid))
     }
 
+    fun testTheOneReportingForACustomInspectionIsFilteredWhenItIsLeftOut() {
+        storeSelectedSeverityNames(project, setOf(HighlightSeverity.ERROR.name))
+        storeProblemFilter(project, ProblemFilter(messageContains = "banana"))
+
+        // The run adds it, as the custom inspection's main tool. What it reports is stored filtered either way, but the
+        // results show what a local inspection reports as it reports it: it has to be the filtering tool that runs.
+        val reporting = runAction().tools.getValue(CustomRegExpInspection.SHORT_NAME).tools.map { it.tool.tool }
+        assertTrue(reporting.toString(), reporting.none { it is CustomRegExpInspection })
+    }
+
     fun testTheProblemsOfACustomInspectionAreKeptWhenTheFilterAcceptsThem() {
         storeSelectedSeverityNames(project, setOf(HighlightSeverity.ERROR.name))
         storeProblemFilter(project, ProblemFilter(messageContains = "apple"))
