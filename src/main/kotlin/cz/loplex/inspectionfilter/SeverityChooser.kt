@@ -9,6 +9,7 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.ex.ActionUtil
 import com.intellij.openapi.actionSystem.impl.SimpleDataContext
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.IconLoader
 import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.popup.JBPopup
 import com.intellij.ui.CollectionComboBoxModel
@@ -83,8 +84,12 @@ internal class SeverityChooser(private val project: Project) {
         // Beside the check box rather than its text, which cannot carry an icon: a check box's own icon replaces its box.
         val labels = severities.associate { severity ->
             val checkBox = checkBoxes.getValue(severity.name)
-            severity.name to JBLabel(severity.displayCapitalizedName, severityIcon(severity), JBLabel.LEADING).apply {
+            val icon = severityIcon(severity)
+            severity.name to JBLabel(severity.displayCapitalizedName, icon, JBLabel.LEADING).apply {
                 labelFor = checkBox
+                // Not every look and feel makes one of an icon that is not an image, and a label with none is as narrow
+                // as its text: the popup, as wide as it opened, would then cut the text short once the label is enabled.
+                disabledIcon = icon?.let(IconLoader::getDisabledIcon)
                 addMouseListener(object : MouseAdapter() {
                     override fun mouseClicked(e: MouseEvent) {
                         if (checkBox.isEnabled) checkBox.doClick()

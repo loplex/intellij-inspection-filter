@@ -2,6 +2,10 @@ package cz.loplex.inspectionfilter
 
 import com.intellij.lang.annotation.HighlightSeverity
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.intellij.ui.components.JBLabel
+import com.intellij.ui.components.JBRadioButton
+import com.intellij.util.ui.UIUtil
+import javax.swing.JComponent
 
 class SeveritySelectionTest : BasePlatformTestCase() {
 
@@ -65,6 +69,21 @@ class SeveritySelectionTest : BasePlatformTestCase() {
         val chooser = SeverityChooser(project)
 
         assertEquals(loadReportedSeverityNames(project), chooser.reportedSeverityNames)
+    }
+
+    fun testTheSeveritiesOfTheChooserAreAsWideWhicheverTheMode() {
+        storeSeverityMode(project, SeverityMode.THIS_AND_HIGHER)
+        // Built as the popup shows it, with its check boxes disabled.
+        val content = SeverityChooser::class.java.getDeclaredMethod("buildContent").apply { isAccessible = true }
+            .invoke(SeverityChooser(project)) as JComponent
+        val labels = UIUtil.findComponentsOfType(content, JBLabel::class.java)
+        val disabledWidths = labels.map { it.preferredSize.width }
+
+        UIUtil.findComponentsOfType(content, JBRadioButton::class.java).single { it.text == "Selected" }.doClick()
+
+        // The popup stays as wide as it opened.
+        assertTrue(labels.all { it.isEnabled })
+        assertEquals(disabledWidths, labels.map { it.preferredSize.width })
     }
 
     fun testTheSummaryNamesTheSeveritiesSelected() {
