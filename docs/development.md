@@ -4,7 +4,8 @@
 |--------------------------|---------------------------------------------------------------------|
 | `./gradlew runIde`       | starts a separate IDE with the plugin installed, in its own sandbox |
 | `./gradlew test`         | runs the tests, which include real **Inspect Code** runs            |
-| `scripts/ui-tests.sh`    | runs the [UI tests](#ui-tests-in-a-real-ide) in a real IDE          |
+| `scripts/ui-tests.sh`    | runs the UI tests in a real IDE                                     |
+| `scripts/sandbox.sh`     | runs the sandbox IDE on a display of its own, to check it by hand   |
 | `./gradlew verifyPlugin` | checks binary compatibility with the recommended IDE builds         |
 
 `verifyPlugin` downloads each IDE build it checks.
@@ -18,52 +19,58 @@ They check what the tests of `./gradlew test` cannot reach, such as a key presse
 [Remote Robot](https://github.com/JetBrains/intellij-ui-test-robot), the older way to do this, is deprecated in their
 favor.
 
-The IDE needs an X display, and `UI_TESTS_DISPLAY` picks which:
-
-| `UI_TESTS_DISPLAY` | The IDE opens on                       | Meant for                         |
-|--------------------|----------------------------------------|-----------------------------------|
-| `xvfb`, by default | a virtual display, which shows nothing | a run, on a desktop or in CI      |
-| `xephyr`           | a window of its own on the desktop     | watching what the tests do        |
-| `desktop`          | the desktop itself, `$DISPLAY`         | a run with nothing else on screen |
-
 ```sh
 scripts/ui-tests.sh
-UI_TESTS_DISPLAY=xephyr scripts/ui-tests.sh --tests '*FilterPopupUiTest*'
+X_SERVER=xephyr scripts/ui-tests.sh --tests '*FilterPopupUiTest*'
 ```
 
+- The IDE opens on [a display of its own](#the-display-of-the-scripts), a virtual one unless `X_SERVER` says otherwise.
 - In CI too, the script is all it takes: it starts the virtual display itself.
-- It needs Xvfb or Xephyr for the display it starts, which is the first one free.
-- Openbox, when installed, is started on that display as the window manager.
-- Xephyr opens its window on the desktop's `$DISPLAY`.
 - Arguments go on to Gradle.
-- `UI_TESTS_SCREEN` picks the size of the display started, 1920x1080 by default.
 - Where `$DISPLAY` is already the one to use, `./gradlew integrationTest` runs the tests just as well.
 - Each test starts an IDE of its own, so it takes a minute or so.
 - The IDE is the one the plugin is built against, run from where Gradle unpacked it: Starter downloads none.
-- The IDE's configuration, logs and reports go to `build/ui-tests`, and so do the display's logs.
+- The IDE's configuration, logs and reports go to `build/ui-tests`.
 
-## Checking it by hand on a virtual display
+## Checking it by hand in the sandbox IDE
 
-`scripts/sandbox-on-xvfb.sh` runs the sandbox IDE of `runIde` on a virtual X display.\
+`scripts/sandbox.sh` runs the sandbox IDE of `runIde` on [a display of its own](#the-display-of-the-scripts).\
 There it can be driven with `xdotool` and looked at in screenshots without taking over the desktop - by an agent, for
 instance.
 
-It needs Xvfb, `xdpyinfo`, `xdotool`, `wmctrl` and ImageMagick.\
-Openbox, when installed, is started as the window manager: without one, nothing places or focuses the windows.
+It needs `xdotool`, `wmctrl` and ImageMagick.
 
 ```sh
-scripts/sandbox-on-xvfb.sh start build/manual-test/some-project
-export DISPLAY=:99
-scripts/sandbox-on-xvfb.sh shot results 1880x340+36+735
-scripts/sandbox-on-xvfb.sh stop
+scripts/sandbox.sh start build/manual-test/some-project
+export DISPLAY=$(cat build/manual-test/display)
+scripts/sandbox.sh shot results 1880x340+36+735
+scripts/sandbox.sh stop
 ```
 
-- **start** opens the project and maximizes the IDE's window.
+- **start** opens the project and maximizes the IDE's window, and ends with the `export DISPLAY=…` to drive it with.
   It refuses while another sandbox IDE runs, as the two would share one configuration directory.
 - **shot** saves a screenshot, cropped when given a geometry, to `build/manual-test/shots`.
 - **stop** closes the IDE as **File | Exit** does, and then the display.
+- **shot** and **stop** find the display in `build/manual-test/display`; logs go to `build/manual-test` too.
 
-Logs go to `build/manual-test` too; `XVFB_DISPLAY` picks a display other than 99.
+## The display of the scripts
+
+Both scripts start an X display for the IDE, and `X_SERVER` picks which:
+
+| `X_SERVER`         | The IDE opens on                       | Meant for                         |
+|--------------------|----------------------------------------|-----------------------------------|
+| `xvfb`, by default | a virtual display, which shows nothing | a run, on a desktop or in CI      |
+| `xephyr`           | a window of its own on the desktop     | watching what the IDE does        |
+| `desktop`          | the desktop itself, `$DISPLAY`         | a run with nothing else on screen |
+
+- The display started is the first one free, or `:X_DISPLAY_NUMBER` when that is set.
+- Either way, it is written to `display` in the script's directory under `build`, such as `build/ui-tests/display`.
+- `X_SCREEN` picks its size, 1920x1080 by default.
+- It needs Xvfb or Xephyr; Xephyr opens its window on the desktop's `$DISPLAY`.
+- Openbox, when installed, is started on it as the window manager: without one, nothing places or focuses the windows.
+- The display's logs go to the same directory.
+- The IDE starts without `WAYLAND_DISPLAY`, so that one able to run on Wayland opens on the display chosen all the same.
+- `scripts/x-display.sh` is where both scripts start it.
 
 ### What gets in the way when driving it
 
