@@ -135,6 +135,11 @@ private class FilteringLocalInspectionToolWrapper : LocalInspectionToolWrapper {
 
     override fun createCopy(): LocalInspectionToolWrapper = of(original.createCopy(), filter)
 
+    // With no extension, as for Structural Search, a wrapper finds these by the type of its tool - here the filtering
+    // one, not the original. Whether a tool is in a dynamic group cannot be passed on: only the platform can ask it.
+    override fun isCleanupTool(): Boolean = original.isCleanupTool
+    override fun isUnfair(): Boolean = original.isUnfair
+
     companion object {
         fun of(original: LocalInspectionToolWrapper, filter: RunProblemFilter): LocalInspectionToolWrapper {
             val ep = original.extension
