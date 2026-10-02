@@ -83,7 +83,7 @@ Both scripts start an X display for the IDE, and `X_SERVER` picks which:
 
 - **The project to open**: a copy under `build/manual-test`, such as `git clone --depth 1 file://…`, can be changed
   freely - to give **On lines changed since the last commit** something to report, for instance.
-  One under `/tmp/user/<uid>` did not import: Maven reported invalid virtual files and found no modules.
+  One on a tmpfs, where `/tmp` often is, did not import: Maven reported invalid virtual files and found no modules.
 - **Opening the action**: from the **Code** menu. **Find Action** answers slowly while the project is indexed.
 - **Clicking**: a dialog does not always open at the same place, so take a screenshot before clicking into it.
 - **Popup menus**: an item, such as **XML** under **Export** in the results, takes a click only after the pointer has
