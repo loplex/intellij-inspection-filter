@@ -6,6 +6,7 @@
 #   desktop   the desktop itself, $DISPLAY: nothing is started
 # X_DISPLAY_NUMBER is the number of the display started, which is otherwise the first one free, and X_SCREEN its size
 # (1920x1080 by default).
+# X_HOST_INPUT, on (the default) or off, says whether the desktop's mouse and keyboard reach Xephyr's display.
 
 x_display_fail() { echo "$*" >&2; exit 1; }
 
@@ -13,6 +14,14 @@ x_display_fail() { echo "$*" >&2; exit 1; }
 # Sets X_DISPLAY to the display, such as :2, and writes it to WORK_DIR/display.
 x_display_start() {
     local work=${1:?a directory to work in} title=${2:-IDE} kind=${X_SERVER:-xvfb} screen=${X_SCREEN:-1920x1080}
+    local host_input=${X_HOST_INPUT:-on}
+    case "$host_input" in
+        on | off) ;;
+        *) x_display_fail "X_HOST_INPUT is on or off, not $host_input" ;;
+    esac
+    if [ "$kind" = xephyr ] && [ "$host_input" = off ]; then
+        command -v xinput >/dev/null || x_display_fail "xinput is missing, which X_HOST_INPUT=off needs"
+    fi
     mkdir -p "$work"
     rm -f "$work/display" "$work/x-display.pids"
     if [ "$kind" = desktop ]; then
@@ -37,8 +46,11 @@ x_display_start() {
         xephyr)
             command -v Xephyr >/dev/null || x_display_fail "Xephyr is missing"
             [ -n "${DISPLAY:-}" ] || x_display_fail "Xephyr opens its window on \$DISPLAY, which is not set"
-            Xephyr "${fixed[@]}" -displayfd 3 -screen "$screen" -resizeable -title "$title" 3>"$ready" \
-                </dev/null >"$work/xephyr.log" 2>&1 &
+            # Without -no-host-grab, Ctrl+Shift over the window hands the whole desktop's input to Xephyr until the
+            # next Ctrl+Shift - and a Wayland desktop was seen to stop answering altogether with Xephyr run that way.
+            # Without -noreset, the server resets whenever its last client leaves, which undoes X_HOST_INPUT=off.
+            Xephyr "${fixed[@]}" -displayfd 3 -screen "$screen" -resizeable -no-host-grab -noreset -title "$title" \
+                3>"$ready" </dev/null >"$work/xephyr.log" 2>&1 &
             ;;
         *) x_display_fail "X_SERVER is xvfb, xephyr or desktop, not $kind" ;;
     esac
@@ -53,6 +65,18 @@ x_display_start() {
     X_DISPLAY=":$(cat "$ready")"
     rm -f "$ready"
     echo "$X_DISPLAY" >"$work/display"
+
+    # Xephyr passes the desktop's mouse and keyboard on through devices of its own, so a mouse moved over the window
+    # moves the pointer on the display too. Disabled, they leave only XTEST, through which a robot clicks and types.
+    if [ "$kind" = xephyr ] && [ "$host_input" = off ]; then
+        local device
+        for device in 'Xephyr virtual mouse' 'Xephyr virtual keyboard'; do
+            if ! DISPLAY="$X_DISPLAY" xinput disable "$device" ||
+                ! DISPLAY="$X_DISPLAY" xinput list --short "$device" | grep -q 'floating slave'; then
+                x_display_fail "could not disable $device on $X_DISPLAY"
+            fi
+        done
+    fi
 
     # Without a window manager, nothing places or focuses the windows.
     if command -v openbox >/dev/null; then

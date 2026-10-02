@@ -67,6 +67,12 @@ Both scripts start an X display for the IDE, and `X_SERVER` picks which:
 - The display started is the first one free, or `:X_DISPLAY_NUMBER` when that is set.
 - Either way, it is written to `display` in the script's directory under `build`, such as `build/ui-tests/display`.
 - `X_SCREEN` picks its size, 1920x1080 by default.
+- `X_HOST_INPUT=off` keeps the desktop's mouse and keyboard off Xephyr's display, which a mouse moved over its window
+  would otherwise drive too. Only XTEST, through which the UI tests click and type, reaches it then. It needs `xinput`.
+- `scripts/ui-tests.sh` has `X_HOST_INPUT` off unless it is set, `scripts/sandbox.sh` on, so the sandbox IDE can be
+  used by hand.
+- Xephyr runs with `-no-host-grab`: Ctrl+Shift over its window does not take over the whole desktop's mouse and
+  keyboard.
 - It needs Xvfb or Xephyr; Xephyr opens its window on the desktop's `$DISPLAY`.
 - Openbox, when installed, is started on it as the window manager: without one, nothing places or focuses the windows.
 - The display's logs go to the same directory.
