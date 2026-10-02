@@ -80,3 +80,8 @@ intellijPlatform {
         password = providers.environmentVariable("PRIVATE_KEY_PASSWORD")
     }
 }
+
+tasks.test {
+    // ShortDescriptionTest reads both from the sources, so a change to either has to run the tests again.
+    inputs.files("README.md", "src/main/resources/META-INF/plugin.xml")
+}
