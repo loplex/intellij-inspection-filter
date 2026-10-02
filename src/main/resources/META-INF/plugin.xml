@@ -2,7 +2,7 @@
 <idea-plugin>
     <id>cz.loplex.ij-inspection-filter</id>
     <name>Inspect Code with Filters</name>
-    <vendor email="lopin.git@loplex.cz" url="https://github.com/loplex/">loplex</vendor>
+    <vendor email="lopin.git@loplex.cz" url="https://github.com/loplex/intellij-inspection-filter">loplex</vendor>
 
     <description><![CDATA[
         Adds <b>Code | Inspect Code with Filters…</b>, which runs inspections like <b>Inspect Code…</b> but reports
