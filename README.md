@@ -1,6 +1,6 @@
 # Inspect Code with Filters
 
-*Inspect Code, reporting only the problems you asked for.*
+Filter what Inspect Code runs and reports in JetBrains IDEs: by severity, inspection group, changed lines and more.
 
 An IntelliJ Platform plugin that adds **Inspect Code with Filters…** next to **Inspect Code…**.\
 It runs the same inspections over the same scope, but reports only those of the severities, groups and kinds of
