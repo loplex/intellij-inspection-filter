@@ -23,6 +23,7 @@ The profile itself is not changed: the run uses a copy of it with the other insp
 - [Installing](#installing) — requirements, building the plugin archive.
 - [Developing it](docs/development.md) — running, testing, UI tests in a real IDE, and checking it by hand in the
   sandbox IDE, on a display of its own.
+- [CI and releasing](docs/releasing.md) — the workflows, the secrets they need, and cutting a release.
 - [License](#license) — AGPL-3.0-or-later.
 
 ## Installing

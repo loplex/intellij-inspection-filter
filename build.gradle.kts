@@ -71,4 +71,12 @@ intellijPlatform {
             recommended()
         }
     }
+
+    // What signPlugin signs with, handed in as these variables by the release workflow; buildPlugin needs none of
+    // them.
+    signing {
+        certificateChain = providers.environmentVariable("CERTIFICATE_CHAIN")
+        privateKey = providers.environmentVariable("PRIVATE_KEY")
+        password = providers.environmentVariable("PRIVATE_KEY_PASSWORD")
+    }
 }

@@ -1,0 +1,48 @@
+name: release
+# Cuts a release through loplex/release-ci: the release commit on a branch of its own, the plugin built, verified and
+# signed from that commit, and a draft release carrying the signed archive. Nothing is tagged or published here:
+# publishing the draft is the decision to release, and release-publish.yml takes it from there.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: >-
+          The version to release, 0.2.0 or 0.2.0-SNAPSHOT; left empty, the one gradle.properties declares
+        default: ''
+# One at a time: two runs would race for the same release branch and the same draft.
+concurrency:
+  group: release
+  cancel-in-progress: false
+jobs:
+  release:
+    # A dispatch can be started on any branch, and would cut the release from that one.
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    # For pushing the release branch and drafting the release after the build.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: loplex/release-ci/release-flow/prepare@v0.2.0
+        id: cut
+        with:
+          source: gradle.properties
+          version: ${{ inputs.version }}
+          repository-url: ${{ github.server_url }}/${{ github.repository }}
+      - uses: loplex/release-ci/intellij/build@v0.2.0
+        id: built
+        with:
+          # Room for the IDE builds the Plugin Verifier downloads, one per release it checks against.
+          free-disk-space: 'true'
+          certificate-chain: ${{ secrets.CERTIFICATE_CHAIN }}
+          private-key: ${{ secrets.PRIVATE_KEY }}
+          private-key-password: ${{ secrets.PRIVATE_KEY_PASSWORD }}
+      - uses: loplex/release-ci/release-flow/draft@v0.2.0
+        with:
+          source: gradle.properties
+          version: ${{ steps.cut.outputs.version }}
+          tag: ${{ steps.cut.outputs.tag }}
+          branch: ${{ steps.cut.outputs.branch }}
+          files: ${{ steps.built.outputs.archive }}
