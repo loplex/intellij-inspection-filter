@@ -95,5 +95,8 @@ Both scripts start an X display for the IDE, and `X_SERVER` picks which:
 - **The error after an export**: in IntelliJ IDEA 2025.3.5, every XML export logs "Descriptions are missed for tools"
   for database inspections, and the IDE reports an error. Plain **Inspect Code** does the same, so it is not the
   plugin's.
+- **The plugin icon in the other theme**: **Settings | Plugins** keeps the variant of the theme the IDE started in, so
+  after switching the theme, restart the IDE before looking. In a light theme, the selected row also blends the icon
+  into its background, so compare the colors in a row that is not selected.
 
 For what a test can check on its own, see [UI tests in a real IDE](#ui-tests-in-a-real-ide).
